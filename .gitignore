@@ -15,3 +15,14 @@
 local.properties
 **/build/
 .kotlin/
+
+# IDE settings (machine-specific)
+/.idea/
+
+# Firebase config: repo is public. Each developer downloads their own copy from the Firebase console.
+google-services.json
+
+# Release signing keys and their passwords must never be committed
+*.jks
+*.keystore
+keystore.properties

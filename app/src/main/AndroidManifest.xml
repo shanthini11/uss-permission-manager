@@ -2,8 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        Needed so the Permission Manager can list every installed app and the permissions it holds.
+        This is the core purpose of the app (Google Play allows it for permission/device managers).
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!--
+        Security: allowBackup is off so permission history and account data are never copied
+        to cloud backups or other devices without the user's explicit export (Backup & Restore screen).
+    -->
     <application
-        android:allowBackup="true"
+        android:name=".PermissionManagerApp"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
