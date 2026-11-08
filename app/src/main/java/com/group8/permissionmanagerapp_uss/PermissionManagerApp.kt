@@ -3,21 +3,39 @@ package com.group8.permissionmanagerapp_uss
 import android.app.Application
 import android.content.Context
 import com.group8.permissionmanagerapp_uss.data.AppsRepository
+import com.group8.permissionmanagerapp_uss.data.history.HistoryRepository
+import com.group8.permissionmanagerapp_uss.data.history.PermissionMonitor
 import com.group8.permissionmanagerapp_uss.data.repository.DemoPermissionRepository
 import com.group8.permissionmanagerapp_uss.data.repository.DevicePermissionRepository
 import com.group8.permissionmanagerapp_uss.data.settings.UserPreferencesRepository
+import com.group8.permissionmanagerapp_uss.work.Notifier
+import com.group8.permissionmanagerapp_uss.work.WorkScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * Simple manual dependency container. Kept deliberately small instead of a DI framework
  * so the build stays fast and easy to follow.
  */
 class AppContainer(context: Context) {
+    /** Long-lived scope for app-wide background tasks (not tied to a screen). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     val preferences = UserPreferencesRepository(context)
+    val devicePermissions = DevicePermissionRepository(context)
+    val demoPermissions = DemoPermissionRepository()
     val appsRepository = AppsRepository(
-        device = DevicePermissionRepository(context),
-        demo = DemoPermissionRepository(),
+        device = devicePermissions,
+        demo = demoPermissions,
         preferences = preferences,
     )
+    val notifier = Notifier(context)
+    val history = HistoryRepository(context, preferences)
+    val permissionMonitor = PermissionMonitor(devicePermissions, history, notifier, preferences)
 }
 
 class PermissionManagerApp : Application() {
@@ -27,5 +45,16 @@ class PermissionManagerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.notifier.createChannels()
+
+        container.appScope.launch {
+            container.preferences.preferences
+                .map { it.periodicReview to it.demoMode }
+                .distinctUntilChanged()
+                .collect { (periodicReview, demoMode) ->
+                    WorkScheduler.schedule(this@PermissionManagerApp, periodicReview)
+                    if (demoMode) container.history.seedDemoIfNeeded()
+                }
+        }
     }
 }

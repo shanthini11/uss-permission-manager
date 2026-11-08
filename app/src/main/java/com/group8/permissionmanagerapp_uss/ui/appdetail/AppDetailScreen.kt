@@ -26,7 +26,9 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.outlined.RemoveModerator
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -115,6 +117,7 @@ fun AppDetailScreen(
                 isDemo = state.isDemo,
                 onPermissionClick = { sheetCategory = it.category },
                 onOpenSystemSettings = openSettings,
+                onRevokeAll = viewModel::requestRevokeAll,
                 modifier = modifier,
             )
 
@@ -147,6 +150,24 @@ fun AppDetailScreen(
             state.result?.let { result ->
                 ChangeResultDialog(result = result, onDone = viewModel::dismissResult, onRetry = viewModel::retry)
             }
+
+            if (state.confirmRevokeAll) {
+                ConfirmRevokeAllDialog(app, onConfirm = viewModel::confirmRevokeAll, onDismiss = viewModel::cancelRevokeAll)
+            }
+            state.revokeAllGuide?.let { categories ->
+                RevokeAllGuideDialog(
+                    appLabel = app.label,
+                    categories = categories,
+                    onOpenSettings = {
+                        viewModel.onRevokeAllGuideConfirmed()
+                        if (!openAppSystemSettings(context, packageName)) viewModel.onRevokeAllSettingsFailed()
+                    },
+                    onDismiss = viewModel::cancelRevokeAll,
+                )
+            }
+            state.revokeAllResult?.let { result ->
+                RevokeAllResultDialog(result, onDone = viewModel::dismissRevokeAllResult, onRetry = viewModel::retryRevokeAll)
+            }
         }
     }
 }
@@ -171,6 +192,7 @@ private fun AppDetailContent(
     isDemo: Boolean,
     onPermissionClick: (AppPermission) -> Unit,
     onOpenSystemSettings: () -> Unit,
+    onRevokeAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -180,7 +202,7 @@ private fun AppDetailContent(
     ) {
         if (isDemo) item { DemoBanner() }
 
-        item { AppHeader(app, onOpenSystemSettings) }
+        item { AppHeader(app, onOpenSystemSettings, onRevokeAll) }
         item { SummaryRow(app) }
         if (app.riskReasons.isNotEmpty()) item { RiskReasonsCard(app) }
 
@@ -199,7 +221,7 @@ private fun AppDetailContent(
 }
 
 @Composable
-private fun AppHeader(app: InstalledApp, onOpenSystemSettings: () -> Unit) {
+private fun AppHeader(app: InstalledApp, onOpenSystemSettings: () -> Unit, onRevokeAll: () -> Unit) {
     SectionCard {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -215,10 +237,22 @@ private fun AppHeader(app: InstalledApp, onOpenSystemSettings: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            OutlinedButton(onClick = onOpenSystemSettings, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("View in Android Settings")
+            // Lo-fi: "Revoke All" and "View OS" side by side.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onRevokeAll,
+                    enabled = app.grantedPermissions.isNotEmpty(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.RemoveModerator, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Revoke all")
+                }
+                OutlinedButton(onClick = onOpenSystemSettings, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("View in OS")
+                }
             }
         }
     }

@@ -1,20 +1,56 @@
 package com.group8.permissionmanagerapp_uss
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.lifecycle.lifecycleScope
 import com.group8.permissionmanagerapp_uss.ui.navigation.PermissionManagerRoot
 import com.group8.permissionmanagerapp_uss.ui.theme.PermissionManagerAppUSSTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    /** Incremented each time a notification asks us to open the Notifications screen. */
+    private val openNotificationsRequest = mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
             PermissionManagerAppUSSTheme {
-                PermissionManagerRoot()
+                PermissionManagerRoot(openNotificationsRequest = openNotificationsRequest.intValue)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Catch changes made while we were away (e.g. in Android Settings). History and the
+        // Notifications screen update; no system notification since the user is here.
+        val container = (application as PermissionManagerApp).container
+        lifecycleScope.launch {
+            runCatching { container.permissionMonitor.check(postNotifications = false) }
+            container.appsRepository.refresh()
+        }
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        // Only a boolean flag is read from the intent; nothing from it is trusted or forwarded.
+        if (intent?.getBooleanExtra(EXTRA_OPEN_NOTIFICATIONS, false) == true) {
+            openNotificationsRequest.intValue++
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_NOTIFICATIONS = "open_notifications"
     }
 }

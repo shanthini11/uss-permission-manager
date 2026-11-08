@@ -42,6 +42,9 @@ class SettingsViewModel(private val prefs: UserPreferencesRepository) : ViewMode
 
     fun setDemoMode(enabled: Boolean) = viewModelScope.launch { prefs.setDemoMode(enabled) }
     fun setShowSystemApps(enabled: Boolean) = viewModelScope.launch { prefs.setShowSystemApps(enabled) }
+    fun setNotifications(enabled: Boolean) = viewModelScope.launch { prefs.setNotificationsEnabled(enabled) }
+    fun setHistory(enabled: Boolean) = viewModelScope.launch { prefs.setHistoryEnabled(enabled) }
+    fun setPeriodicReview(enabled: Boolean) = viewModelScope.launch { prefs.setPeriodicReview(enabled) }
 
     companion object {
         val Factory = viewModelFactory {
@@ -75,6 +78,24 @@ fun SettingsScreen(
             "Privacy & permission preferences",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ToggleRow(
+            title = "Permission Notifications",
+            subtitle = "Alert me when an app's permissions change, even when this app is closed.",
+            checked = prefs.notificationsEnabled,
+            onCheckedChange = viewModel::setNotifications,
+        )
+        ToggleRow(
+            title = "Permission History",
+            subtitle = "Keep an encrypted record of permission changes on this device for the last 30 days.",
+            checked = prefs.historyEnabled,
+            onCheckedChange = viewModel::setHistory,
+        )
+        ToggleRow(
+            title = "Periodic Review",
+            subtitle = "A weekly reminder to check which apps can access your data.",
+            checked = prefs.periodicReview,
+            onCheckedChange = viewModel::setPeriodicReview,
         )
         ToggleRow(
             title = "Demo mode",

@@ -10,6 +10,9 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- Alerts when an app's permissions change, and the weekly review reminder (asked at runtime). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!--
         Security: allowBackup is off so permission history and account data are never copied
         to cloud backups or other devices without the user's explicit export (Backup & Restore screen).

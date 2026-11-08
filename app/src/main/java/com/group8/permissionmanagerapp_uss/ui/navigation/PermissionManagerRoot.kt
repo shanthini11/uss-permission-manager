@@ -19,6 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.group8.permissionmanagerapp_uss.ui.history.HistoryScreen
+import com.group8.permissionmanagerapp_uss.ui.history.NotificationsScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -44,9 +47,14 @@ import com.group8.permissionmanagerapp_uss.ui.overview.HomeScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PermissionManagerRoot() {
+fun PermissionManagerRoot(openNotificationsRequest: Int = 0) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Tapping a system notification opens the Notifications screen.
+    LaunchedEffect(openNotificationsRequest) {
+        if (openNotificationsRequest > 0) navController.navigateSingle(NotificationsRoute)
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
     // Tab whose root screen is showing right now (no back arrow on these).
@@ -131,10 +139,16 @@ fun PermissionManagerRoot() {
                 )
             }
             composable<HistoryRoute> {
-                ComingSoonScreen("Permission History", "A log of every permission change. Arrives on Day 3.")
+                HistoryScreen(
+                    onReviewPermission = { pkg, category -> navController.navigate(AppDetailRoute(pkg, category.name)) },
+                )
             }
             composable<NotificationsRoute> {
-                ComingSoonScreen("Notifications", "Alerts when an app's permissions change. Arrives on Day 3.")
+                NotificationsScreen(
+                    onViewPermission = { pkg, category -> navController.navigate(AppDetailRoute(pkg, category.name)) },
+                    onOpenHistory = { navController.navigateToTab(TopLevelDestination.HISTORY) },
+                    onStartReview = { navController.navigateToTab(TopLevelDestination.CATEGORIES) },
+                )
             }
             composable<ProfileRoute> {
                 ComingSoonScreen("Profile", "Your account. Arrives on Day 4 with sign-in.")
