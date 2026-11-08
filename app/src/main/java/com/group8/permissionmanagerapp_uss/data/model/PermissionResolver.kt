@@ -116,6 +116,64 @@ object PermissionResolver {
         }
     }
 
-    const val HIGH_THRESHOLD = 10
-    const val MEDIUM_THRESHOLD = 4
+    /** Builds an [InstalledApp] with risk score, level and reasons computed consistently. */
+    fun buildApp(
+        packageName: String,
+        label: String,
+        isSystemApp: Boolean,
+        permissions: List<AppPermission>,
+        lastUpdatedAt: Long,
+    ) = InstalledApp(
+        packageName = packageName,
+        label = label,
+        isSystemApp = isSystemApp,
+        permissions = permissions,
+        riskScore = riskScore(permissions),
+        riskLevel = riskLevel(permissions),
+        riskReasons = riskReasons(permissions),
+        lastUpdatedAt = lastUpdatedAt,
+    )
+
+    /**
+     * Calibrated so "High risk" stays meaningful: a typical chat or social app (camera, mic,
+     * contacts, photos) is Medium; High needs background tracking of critical data or a very
+     * broad mix of access. If every app were red, users would learn to ignore the badge.
+     */
+    const val HIGH_THRESHOLD = 18
+    const val MEDIUM_THRESHOLD = 8
+
+    /** Up to [max] plain-language reasons explaining the risk level, most serious first. */
+    fun riskReasons(permissions: List<AppPermission>, max: Int = 3): List<String> =
+        permissions
+            .filter { it.access.isGranted && it.category.riskWeight > 0 }
+            .sortedWith(
+                compareByDescending<AppPermission> { it.isBackground }
+                    .thenBy { it.category.sensitivity.ordinal }
+                    .thenByDescending { it.category.riskWeight }
+            )
+            .take(max)
+            .map { p ->
+                val noun = p.category.riskNoun
+                when (p.access) {
+                    AccessLevel.ALWAYS -> "Can use $noun even when the app is closed"
+                    AccessLevel.LIMITED -> "Has limited access to $noun"
+                    else -> "Can access $noun"
+                }
+            }
+
+    private val PermissionCategory.riskNoun: String
+        get() = when (this) {
+            PermissionCategory.LOCATION -> "your location"
+            PermissionCategory.CAMERA -> "your camera"
+            PermissionCategory.MICROPHONE -> "your microphone"
+            PermissionCategory.FILES_PHOTOS -> "your photos and files"
+            PermissionCategory.CONTACTS -> "your contacts"
+            PermissionCategory.SMS -> "your text messages (including OTPs)"
+            PermissionCategory.PHONE -> "your calls and phone details"
+            PermissionCategory.CALENDAR -> "your calendar"
+            PermissionCategory.BODY_SENSORS -> "your health sensors"
+            PermissionCategory.PHYSICAL_ACTIVITY -> "your physical activity"
+            PermissionCategory.NEARBY_DEVICES -> "nearby devices"
+            PermissionCategory.NOTIFICATIONS -> "notifications"
+        }
 }

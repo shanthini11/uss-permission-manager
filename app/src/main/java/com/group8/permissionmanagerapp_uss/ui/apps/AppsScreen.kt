@@ -42,6 +42,7 @@ import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
 import com.group8.permissionmanagerapp_uss.ui.components.AppAvatar
 import com.group8.permissionmanagerapp_uss.ui.components.DemoBanner
 import com.group8.permissionmanagerapp_uss.ui.components.EmptyState
+import com.group8.permissionmanagerapp_uss.ui.components.PreinstalledChip
 import com.group8.permissionmanagerapp_uss.ui.components.RiskBadge
 import com.group8.permissionmanagerapp_uss.ui.components.SectionCard
 
@@ -124,7 +125,7 @@ fun AppsContent(
         item {
             Text(
                 text = if (state.isLoading) "Loading apps…"
-                else "Showing ${state.apps.size} of ${state.totalApps} apps · riskiest first",
+                else "Showing ${state.apps.size} of ${state.totalApps} apps · your apps first, riskiest first",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -186,7 +187,10 @@ fun AppRow(app: InstalledApp, onClick: () -> Unit, modifier: Modifier = Modifier
                 )
             }
             Spacer(Modifier.width(8.dp))
-            RiskBadge(app.riskLevel)
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RiskBadge(app.riskLevel)
+                if (app.isSystemApp) PreinstalledChip()
+            }
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,

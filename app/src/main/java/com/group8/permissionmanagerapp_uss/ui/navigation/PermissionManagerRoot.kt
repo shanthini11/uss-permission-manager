@@ -37,6 +37,10 @@ import com.group8.permissionmanagerapp_uss.ui.appdetail.AppDetailScreen
 import com.group8.permissionmanagerapp_uss.ui.apps.AppsScreen
 import com.group8.permissionmanagerapp_uss.ui.common.ComingSoonScreen
 import com.group8.permissionmanagerapp_uss.ui.settings.SettingsScreen
+import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
+import com.group8.permissionmanagerapp_uss.ui.overview.BackgroundRiskScreen
+import com.group8.permissionmanagerapp_uss.ui.overview.CategoriesScreen
+import com.group8.permissionmanagerapp_uss.ui.overview.HomeScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +49,14 @@ fun PermissionManagerRoot() {
     val snackbarHostState = remember { SnackbarHostState() }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
+    // Tab whose root screen is showing right now (no back arrow on these).
     val currentTab = TopLevelDestination.entries.firstOrNull { destination.isOn(it.route) }
+    // Tab the user is "inside", even on a pushed screen like Settings, so the bar stays highlighted.
+    // Home is always at the bottom of the stack, so prefer any other tab that is present.
+    // Recomputed whenever backStackEntry changes.
+    val owningTab = backStackEntry?.let {
+        TopLevelDestination.entries.lastOrNull { tab -> navController.hasInBackStack(tab.route) }
+    }
 
     Scaffold(
         topBar = {
@@ -77,7 +88,7 @@ fun PermissionManagerRoot() {
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
                 TopLevelDestination.entries.forEach { tab ->
-                    val selected = currentTab == tab
+                    val selected = owningTab == tab
                     NavigationBarItem(
                         selected = selected,
                         onClick = { navController.navigateToTab(tab) },
@@ -99,16 +110,25 @@ fun PermissionManagerRoot() {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable<HomeRoute> {
-                ComingSoonScreen(
-                    "Dashboard",
-                    "Your permission overview arrives on Day 2. For now, open the Apps tab to see every app and its permissions.",
+                HomeScreen(
+                    onAppClick = { pkg -> navController.navigate(AppDetailRoute(pkg)) },
+                    onOpenCategories = { navController.navigateToTab(TopLevelDestination.CATEGORIES) },
+                    onOpenBackgroundRisk = { navController.navigateSingle(BackgroundRiskRoute) },
+                    onOpenApps = { navController.navigateToTab(TopLevelDestination.APPS) },
                 )
             }
             composable<AppsRoute> {
                 AppsScreen(onAppClick = { pkg -> navController.navigate(AppDetailRoute(pkg)) })
             }
             composable<CategoriesRoute> {
-                ComingSoonScreen("Permission Categories", "Browse apps by Location, Camera, Microphone and more. Arrives on Day 2.")
+                CategoriesScreen(
+                    onAppClick = { pkg, category -> navController.navigate(AppDetailRoute(pkg, category.name)) },
+                )
+            }
+            composable<BackgroundRiskRoute> {
+                BackgroundRiskScreen(
+                    onAppClick = { pkg, category -> navController.navigate(AppDetailRoute(pkg, category.name)) },
+                )
             }
             composable<HistoryRoute> {
                 ComingSoonScreen("Permission History", "A log of every permission change. Arrives on Day 3.")
@@ -122,7 +142,13 @@ fun PermissionManagerRoot() {
             composable<SettingsRoute> { SettingsScreen() }
             composable<AppDetailRoute> { entry ->
                 val route = entry.toRoute<AppDetailRoute>()
-                AppDetailScreen(packageName = route.packageName, snackbarHostState = snackbarHostState)
+                AppDetailScreen(
+                    packageName = route.packageName,
+                    snackbarHostState = snackbarHostState,
+                    focusCategory = route.focusCategory?.let { name ->
+                        PermissionCategory.entries.firstOrNull { it.name == name }
+                    },
+                )
             }
         }
     }
@@ -135,6 +161,7 @@ private fun titleFor(destination: NavDestination?, tab: TopLevelDestination?): S
     tab == TopLevelDestination.HOME -> "Permission Manager"
     tab != null -> tab.label
     destination.isOn(AppDetailRoute("")) -> "App permissions"
+    destination.isOn(BackgroundRiskRoute) -> "Background risk"
     destination.isOn(NotificationsRoute) -> "Notifications"
     destination.isOn(ProfileRoute) -> "Profile"
     destination.isOn(SettingsRoute) -> "Settings"
@@ -142,12 +169,27 @@ private fun titleFor(destination: NavDestination?, tab: TopLevelDestination?): S
 }
 
 private fun NavHostController.navigateToTab(tab: TopLevelDestination) {
+    // Re-selecting the tab you're already in (e.g. from Settings opened inside Apps) returns to its
+    // main screen. Without this, restoreState would restore the same stack and nothing would happen.
+    val owningTab = TopLevelDestination.entries.lastOrNull { hasInBackStack(it.route) }
+    if (owningTab == tab) {
+        popBackStack(tab.route, inclusive = false)
+        return
+    }
     navigate(tab.route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }
 }
+
+private fun NavHostController.hasInBackStack(route: Any): Boolean =
+    try {
+        getBackStackEntry(route)
+        true
+    } catch (_: IllegalArgumentException) {
+        false
+    }
 
 private fun NavHostController.navigateSingle(route: Any) {
     navigate(route) { launchSingleTop = true }

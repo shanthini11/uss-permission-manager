@@ -1,6 +1,9 @@
 package com.group8.permissionmanagerapp_uss.data.repository
 
+import com.group8.permissionmanagerapp_uss.data.model.AppPermission
 import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
+import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
+import com.group8.permissionmanagerapp_uss.data.model.PermissionChoice
 import com.group8.permissionmanagerapp_uss.data.model.PermissionResolver
 
 /**
@@ -16,23 +19,50 @@ class DemoPermissionRepository(
 
     override val isDemo: Boolean = true
 
+    /**
+     * Changes the user applied in Demo mode (package -> category -> new permission).
+     * Kept in memory only: sample data resets when the app restarts.
+     */
+    private val overrides = mutableMapOf<String, MutableMap<PermissionCategory, AppPermission>>()
+
+    // Demo "pre-installed" apps (Maps, YouTube, Chrome) are launcher apps, so they are always shown,
+    // matching how the device repository treats pre-installed apps with a launcher icon.
     override suspend fun loadApps(includeSystemApps: Boolean): List<InstalledApp> =
-        demoApps()
-            .filter { includeSystemApps || !it.isSystemApp }
-            .sortedWith(compareByDescending<InstalledApp> { it.riskScore }.thenBy { it.label.lowercase() })
+        demoApps().sortedWith(InstalledApp.RiskOrder)
 
     override suspend fun loadApp(packageName: String): InstalledApp? =
         demoApps().firstOrNull { it.packageName == packageName }
 
+    /** Demo mode only: apply [choice] directly, as if the user had changed it in Android Settings. */
+    @Synchronized
+    fun applyChange(packageName: String, category: PermissionCategory, choice: PermissionChoice) {
+        val spec = specs.firstOrNull { it.packageName == packageName } ?: return
+        val original = PermissionResolver.resolve(spec.grants).firstOrNull { it.category == category } ?: return
+        overrides.getOrPut(packageName) { mutableMapOf() }[category] = original.copy(
+            access = choice.target,
+            detail = when (choice) {
+                PermissionChoice.ALLOW_ONCE -> "Asks every time"
+                PermissionChoice.APPROXIMATE -> "Approximate location only, while using the app"
+                PermissionChoice.SELECTED_ONLY -> "Selected photos and videos only"
+                PermissionChoice.ALLOW_ALL -> "All photos, videos and files"
+                PermissionChoice.ALWAYS -> "Even when the app is closed"
+                else -> null
+            },
+        )
+    }
+
+    @Synchronized
+    fun clearChanges() = overrides.clear()
+
+    @Synchronized
     private fun demoApps(): List<InstalledApp> = specs.map { spec ->
-        val perms = PermissionResolver.resolve(spec.grants)
-        InstalledApp(
+        val changed = overrides[spec.packageName].orEmpty()
+        val perms = PermissionResolver.resolve(spec.grants).map { changed[it.category] ?: it }
+        PermissionResolver.buildApp(
             packageName = spec.packageName,
             label = spec.label,
             isSystemApp = spec.isSystem,
             permissions = perms,
-            riskScore = PermissionResolver.riskScore(perms),
-            riskLevel = PermissionResolver.riskLevel(perms),
             lastUpdatedAt = now() - spec.daysSinceUpdate * DAY_MS,
         )
     }

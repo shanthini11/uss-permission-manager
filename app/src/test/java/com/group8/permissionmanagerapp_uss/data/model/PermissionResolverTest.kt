@@ -109,14 +109,40 @@ class PermissionResolverTest {
     }
 
     @Test
-    fun `camera plus microphone is MEDIUM, adding contacts and SMS makes it HIGH`() {
+    fun `camera alone is LOW, camera plus microphone is MEDIUM`() {
+        val low = PermissionResolver.resolve(perms("CAMERA" to true))
+        assertEquals(RiskLevel.LOW, PermissionResolver.riskLevel(low))
+
         val medium = PermissionResolver.resolve(perms("CAMERA" to true, "RECORD_AUDIO" to true))
         assertEquals(RiskLevel.MEDIUM, PermissionResolver.riskLevel(medium))
+    }
 
-        val high = PermissionResolver.resolve(
-            perms("CAMERA" to true, "RECORD_AUDIO" to true, "READ_CONTACTS" to true, "READ_SMS" to true)
+    @Test
+    fun `typical chat app stays MEDIUM so High risk keeps its meaning`() {
+        val chat = PermissionResolver.resolve(
+            perms("CAMERA" to true, "RECORD_AUDIO" to true, "READ_CONTACTS" to true, "READ_MEDIA_IMAGES" to true)
         )
-        assertEquals(RiskLevel.HIGH, PermissionResolver.riskLevel(high))
+        assertEquals(RiskLevel.MEDIUM, PermissionResolver.riskLevel(chat))
+    }
+
+    @Test
+    fun `very broad foreground access is HIGH`() {
+        val broad = PermissionResolver.resolve(
+            perms("CAMERA" to true, "RECORD_AUDIO" to true, "READ_CONTACTS" to true, "READ_SMS" to true,
+                "ACCESS_FINE_LOCATION" to true)
+        )
+        assertEquals(RiskLevel.HIGH, PermissionResolver.riskLevel(broad))
+    }
+
+    @Test
+    fun `risk reasons put background access first and skip denied permissions`() {
+        val result = PermissionResolver.resolve(
+            perms("CAMERA" to true, "RECORD_AUDIO" to false,
+                "ACCESS_FINE_LOCATION" to true, "ACCESS_BACKGROUND_LOCATION" to true)
+        )
+        val reasons = PermissionResolver.riskReasons(result)
+        assertEquals("Can use your location even when the app is closed", reasons.first())
+        assertTrue(reasons.none { "microphone" in it })
     }
 
     @Test

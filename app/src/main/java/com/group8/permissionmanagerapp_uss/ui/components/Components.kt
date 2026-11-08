@@ -149,6 +149,17 @@ fun RiskBadge(level: RiskLevel, modifier: Modifier = Modifier) {
     Pill(level.label, container, content, modifier)
 }
 
+/** Marks built-in apps (Phone, Messages...) that need broad access to do their job. */
+@Composable
+fun PreinstalledChip(modifier: Modifier = Modifier) {
+    Pill(
+        "Pre-installed",
+        MaterialTheme.colorScheme.surfaceVariant,
+        MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier,
+    )
+}
+
 @Composable
 fun SensitivityBadge(sensitivity: Sensitivity, modifier: Modifier = Modifier) {
     val c = LocalRiskColors.current

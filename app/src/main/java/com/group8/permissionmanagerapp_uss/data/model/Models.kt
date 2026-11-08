@@ -57,6 +57,8 @@ data class InstalledApp(
     val permissions: List<AppPermission>,
     val riskScore: Int,
     val riskLevel: RiskLevel,
+    /** Plain-language reasons behind [riskLevel], most serious first (SR5). */
+    val riskReasons: List<String>,
     /** Epoch millis of the last install/update, used for "recently installed" hints. */
     val lastUpdatedAt: Long,
 ) {
@@ -65,4 +67,16 @@ data class InstalledApp(
 
     fun accessFor(category: PermissionCategory): AppPermission? =
         permissions.firstOrNull { it.category == category }
+
+    companion object {
+        /**
+         * List order: apps the user installed first, riskiest first; pre-installed apps after them.
+         * Pre-installed apps (Phone, Messages...) need broad access to work, so putting them first
+         * would bury the apps the user actually chose to install.
+         */
+        val RiskOrder: Comparator<InstalledApp> =
+            compareBy<InstalledApp> { it.isSystemApp }
+                .thenByDescending { it.riskScore }
+                .thenBy { it.label.lowercase() }
+    }
 }

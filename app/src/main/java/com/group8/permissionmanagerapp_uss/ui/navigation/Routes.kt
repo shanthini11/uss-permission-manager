@@ -20,7 +20,10 @@ import kotlinx.serialization.Serializable
 @Serializable data object NotificationsRoute
 @Serializable data object ProfileRoute
 @Serializable data object SettingsRoute
-@Serializable data class AppDetailRoute(val packageName: String)
+@Serializable data object BackgroundRiskRoute
+
+/** @param focusCategory PermissionCategory name whose sheet should open straight away, if any. */
+@Serializable data class AppDetailRoute(val packageName: String, val focusCategory: String? = null)
 
 /**
  * Bottom navigation tabs. Each tab has a text label as well as an icon: in the lo-fi study,

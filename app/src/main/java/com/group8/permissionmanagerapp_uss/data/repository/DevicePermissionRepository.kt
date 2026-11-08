@@ -35,7 +35,7 @@ class DevicePermissionRepository(
                 .filter { includeSystemApps || isUserFacing(it) }
                 .mapNotNull { toInstalledApp(it) }
                 .filter { it.permissions.isNotEmpty() }
-                .sortedWith(compareByDescending<InstalledApp> { it.riskScore }.thenBy { it.label.lowercase() })
+                .sortedWith(InstalledApp.RiskOrder)
                 .toList()
         }
 
@@ -76,15 +76,11 @@ class DevicePermissionRepository(
         val grants = requested.indices.associate { i ->
             requested[i] to (flags.getOrElse(i) { 0 } and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0)
         }
-        val permissions = PermissionResolver.resolve(grants)
-
-        return InstalledApp(
+        return PermissionResolver.buildApp(
             packageName = info.packageName,
             label = appInfo.loadLabel(pm).toString(),
             isSystemApp = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
-            permissions = permissions,
-            riskScore = PermissionResolver.riskScore(permissions),
-            riskLevel = PermissionResolver.riskLevel(permissions),
+            permissions = PermissionResolver.resolve(grants),
             lastUpdatedAt = info.lastUpdateTime,
         )
     }

@@ -1,6 +1,9 @@
 package com.group8.permissionmanagerapp_uss.data
 
 import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
+import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
+import com.group8.permissionmanagerapp_uss.data.model.PermissionChoice
+import com.group8.permissionmanagerapp_uss.data.repository.DemoPermissionRepository
 import com.group8.permissionmanagerapp_uss.data.repository.PermissionRepository
 import com.group8.permissionmanagerapp_uss.data.settings.UserPreferences
 import com.group8.permissionmanagerapp_uss.data.settings.UserPreferencesRepository
@@ -26,7 +29,7 @@ data class AppsSnapshot(
  */
 class AppsRepository(
     private val device: PermissionRepository,
-    private val demo: PermissionRepository,
+    private val demo: DemoPermissionRepository,
     private val preferences: UserPreferencesRepository,
 ) {
     private val refreshTick = MutableStateFlow(0)
@@ -42,6 +45,15 @@ class AppsRepository(
 
     suspend fun loadApp(packageName: String, demoMode: Boolean): InstalledApp? =
         source(demoMode).loadApp(packageName)
+
+    /**
+     * Demo mode only: applies a change directly to the sample data and refreshes every screen.
+     * Real apps can only be changed in Android Settings.
+     */
+    fun applyDemoChange(packageName: String, category: PermissionCategory, choice: PermissionChoice) {
+        demo.applyChange(packageName, category, choice)
+        refresh()
+    }
 
     private suspend fun load(prefs: UserPreferences): AppsSnapshot {
         val source = source(prefs.demoMode)
