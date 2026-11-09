@@ -51,6 +51,7 @@ import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
 import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
 import com.group8.permissionmanagerapp_uss.data.model.RiskLevel
 import com.group8.permissionmanagerapp_uss.data.model.Sensitivity
+import com.group8.permissionmanagerapp_uss.ui.auth.rememberIdentityGuard
 import com.group8.permissionmanagerapp_uss.ui.components.AccessChip
 import com.group8.permissionmanagerapp_uss.ui.components.AppAvatar
 import com.group8.permissionmanagerapp_uss.ui.components.CategoryIconBox
@@ -83,6 +84,8 @@ fun AppDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sheetCategory by rememberSaveable(packageName) { mutableStateOf(focusCategory) }
+    val identity = rememberIdentityGuard()
+    identity.Dialog()
 
     LifecycleResumeEffect(packageName) {
         viewModel.refresh()
@@ -117,7 +120,7 @@ fun AppDetailScreen(
                 isDemo = state.isDemo,
                 onPermissionClick = { sheetCategory = it.category },
                 onOpenSystemSettings = openSettings,
-                onRevokeAll = viewModel::requestRevokeAll,
+                onRevokeAll = { identity.run("revoke all of ${app.label}'s permissions") { viewModel.requestRevokeAll() } },
                 modifier = modifier,
             )
 
@@ -130,7 +133,9 @@ fun AppDetailScreen(
                     onDismiss = { sheetCategory = null },
                     onApply = { choice ->
                         sheetCategory = null
-                        viewModel.requestChange(sheetPermission.category, choice)
+                        identity.run("change this permission") {
+                            viewModel.requestChange(sheetPermission.category, choice)
+                        }
                     },
                 )
             }

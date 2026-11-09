@@ -3,6 +3,8 @@ package com.group8.permissionmanagerapp_uss
 import android.app.Application
 import android.content.Context
 import com.group8.permissionmanagerapp_uss.data.AppsRepository
+import com.group8.permissionmanagerapp_uss.data.auth.AuthRepository
+import com.group8.permissionmanagerapp_uss.data.auth.OtpService
 import com.group8.permissionmanagerapp_uss.data.history.HistoryRepository
 import com.group8.permissionmanagerapp_uss.data.history.PermissionMonitor
 import com.group8.permissionmanagerapp_uss.data.repository.DemoPermissionRepository
@@ -36,6 +38,8 @@ class AppContainer(context: Context) {
     val notifier = Notifier(context)
     val history = HistoryRepository(context, preferences)
     val permissionMonitor = PermissionMonitor(devicePermissions, history, notifier, preferences)
+    val auth = AuthRepository(context)
+    val otp = OtpService(BuildConfig.OTP_SERVICE_URL, auth)
 }
 
 class PermissionManagerApp : Application() {

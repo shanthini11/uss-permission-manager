@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.group8.permissionmanagerapp_uss.AppInfo
 import com.group8.permissionmanagerapp_uss.MainActivity
 import com.group8.permissionmanagerapp_uss.R
 import com.group8.permissionmanagerapp_uss.data.history.PermissionEvent
@@ -57,7 +58,7 @@ class Notifier(private val context: Context) {
             title = title,
             text = text,
             style = NotificationCompat.InboxStyle().also { s -> lines.forEach { s.addLine(it) } },
-            publicText = "Open Permission Manager to review",
+            publicText = "Open ${AppInfo.NAME} to review",
         )
     }
 
@@ -93,7 +94,7 @@ class Notifier(private val context: Context) {
         )
         val public = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Permission Manager")
+            .setContentTitle(AppInfo.NAME)
             .setContentText(publicText)
             .build()
 

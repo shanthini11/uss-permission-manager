@@ -57,7 +57,7 @@ internal object DemoHistory {
             id = "demo-review",
             timestamp = now - 20 * HOUR,
             packageName = "",
-            appLabel = "Permission Manager",
+            appLabel = com.group8.permissionmanagerapp_uss.AppInfo.NAME,
             category = null,
             from = null,
             to = null,

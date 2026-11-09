@@ -6,7 +6,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.group8.permissionmanagerapp_uss.ui.auth.AuthFlow
+import com.group8.permissionmanagerapp_uss.ui.auth.AuthGate
+import com.group8.permissionmanagerapp_uss.ui.auth.AuthViewModel
 import com.group8.permissionmanagerapp_uss.ui.navigation.PermissionManagerRoot
 import com.group8.permissionmanagerapp_uss.ui.theme.PermissionManagerAppUSSTheme
 import kotlinx.coroutines.launch
@@ -22,7 +28,18 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             PermissionManagerAppUSSTheme {
-                PermissionManagerRoot(openNotificationsRequest = openNotificationsRequest.intValue)
+                val authViewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
+                val gate by authViewModel.gate.collectAsStateWithLifecycle()
+                when (val g = gate) {
+                    // Only fully signed-in users (password + email code) reach the app.
+                    is AuthGate.SignedIn -> PermissionManagerRoot(
+                        userName = g.name,
+                        userEmail = g.email,
+                        onSignOut = authViewModel::signOut,
+                        openNotificationsRequest = openNotificationsRequest.intValue,
+                    )
+                    else -> AuthFlow(g, authViewModel)
+                }
             }
         }
     }

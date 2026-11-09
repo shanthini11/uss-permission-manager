@@ -330,7 +330,7 @@ fun EventDetailSheet(event: PermissionEvent, onDismiss: () -> Unit, onReview: ()
                     HorizontalDivider()
                     Text(
                         when (event.source) {
-                            EventSource.IN_APP -> "You made this change using Permission Manager, and we confirmed it in Android Settings."
+                            EventSource.IN_APP -> "You made this change using ${com.group8.permissionmanagerapp_uss.AppInfo.NAME}, and we confirmed it in Android Settings."
                             EventSource.DETECTED -> "We noticed this change during a routine check. It may have been made in Android Settings, " +
                                 "or the app asked and you answered."
                             EventSource.REVIEW_REMINDER -> "Weekly review reminder."

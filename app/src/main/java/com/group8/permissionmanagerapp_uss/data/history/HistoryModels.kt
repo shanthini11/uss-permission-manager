@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
 /** How a permission change was noticed. */
 @Serializable
 enum class EventSource(val label: String) {
-    /** The user changed it through Permission Manager's sheet (and we verified it). */
-    IN_APP("Changed using Permission Manager"),
+    /** The user changed it through our permission sheet (and we verified it). */
+    IN_APP("Changed using ${com.group8.permissionmanagerapp_uss.AppInfo.NAME}"),
 
     /** We noticed it on a later check: changed in Android Settings, or the app asked and you answered. */
     DETECTED("Detected: changed outside this app"),

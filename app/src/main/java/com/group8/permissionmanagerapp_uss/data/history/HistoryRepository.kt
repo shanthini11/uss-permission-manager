@@ -102,7 +102,7 @@ class HistoryRepository(
                     id = UUID.randomUUID().toString(),
                     timestamp = now(),
                     packageName = "",
-                    appLabel = "Permission Manager",
+                    appLabel = com.group8.permissionmanagerapp_uss.AppInfo.NAME,
                     category = null,
                     from = null,
                     to = null,

@@ -21,6 +21,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object ProfileRoute
 @Serializable data object SettingsRoute
 @Serializable data object BackgroundRiskRoute
+@Serializable data object DevicesRoute
 
 /** @param focusCategory PermissionCategory name whose sheet should open straight away, if any. */
 @Serializable data class AppDetailRoute(val packageName: String, val focusCategory: String? = null)

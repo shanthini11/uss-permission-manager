@@ -19,8 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import com.group8.permissionmanagerapp_uss.AppInfo
 import androidx.compose.runtime.LaunchedEffect
 import com.group8.permissionmanagerapp_uss.ui.history.HistoryScreen
+import com.group8.permissionmanagerapp_uss.ui.auth.ProfileScreen
 import com.group8.permissionmanagerapp_uss.ui.history.NotificationsScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -47,7 +49,12 @@ import com.group8.permissionmanagerapp_uss.ui.overview.HomeScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PermissionManagerRoot(openNotificationsRequest: Int = 0) {
+fun PermissionManagerRoot(
+    userName: String,
+    userEmail: String,
+    onSignOut: () -> Unit,
+    openNotificationsRequest: Int = 0,
+) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -151,7 +158,16 @@ fun PermissionManagerRoot(openNotificationsRequest: Int = 0) {
                 )
             }
             composable<ProfileRoute> {
-                ComingSoonScreen("Profile", "Your account. Arrives on Day 4 with sign-in.")
+                ProfileScreen(
+                    name = userName,
+                    email = userEmail,
+                    onManageDevices = { navController.navigateSingle(DevicesRoute) },
+                    onPrivacySettings = { navController.navigateSingle(SettingsRoute) },
+                    onSignOut = onSignOut,
+                )
+            }
+            composable<DevicesRoute> {
+                ComingSoonScreen("My Devices", "Manage permissions across your devices. Arrives with the multi-device update.")
             }
             composable<SettingsRoute> { SettingsScreen() }
             composable<AppDetailRoute> { entry ->
@@ -172,14 +188,15 @@ private fun NavDestination?.isOn(route: Any): Boolean =
     this?.hierarchy?.any { it.hasRoute(route::class) } == true
 
 private fun titleFor(destination: NavDestination?, tab: TopLevelDestination?): String = when {
-    tab == TopLevelDestination.HOME -> "Permission Manager"
+    tab == TopLevelDestination.HOME -> AppInfo.NAME
     tab != null -> tab.label
     destination.isOn(AppDetailRoute("")) -> "App permissions"
     destination.isOn(BackgroundRiskRoute) -> "Background risk"
     destination.isOn(NotificationsRoute) -> "Notifications"
     destination.isOn(ProfileRoute) -> "Profile"
+    destination.isOn(DevicesRoute) -> "My Devices"
     destination.isOn(SettingsRoute) -> "Settings"
-    else -> "Permission Manager"
+    else -> AppInfo.NAME
 }
 
 private fun NavHostController.navigateToTab(tab: TopLevelDestination) {
