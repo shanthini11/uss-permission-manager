@@ -30,6 +30,8 @@ fun PrivacyInfoScreen(modifier: Modifier = Modifier) {
             "• Your account: name and email address, stored by Google Firebase so you can sign in.\n" +
                 "• App permissions: which apps on this phone have which permissions, read on this phone by Android.\n" +
                 "• Permission history: changes we notice (app name, permission, before and after, time).\n" +
+                "• Your devices: each phone's name, model, Android version and last-active time, plus (unless you turn it " +
+                "off) a short summary: app counts and its 10 riskiest apps with their permission types.\n" +
                 "We don't collect your location, contacts, photos, messages or any app's content, and there is no " +
                 "advertising or analytics tracking.",
         )
@@ -42,9 +44,11 @@ fun PrivacyInfoScreen(modifier: Modifier = Modifier) {
         )
         InfoCard(
             "LOCAL STORAGE & RETENTION",
-            "Permission data and history stay on this phone, encrypted with a key held by Android's secure hardware. " +
-                "They are not uploaded to any server. History is kept for the last 30 days. " +
-                "Android's automatic cloud backup is turned off for this app.",
+            "Permission history stays on this phone, encrypted with a key held by Android's secure hardware, and is " +
+                "never uploaded. History is kept for the last 30 days. Android's automatic cloud backup is turned off.\n\n" +
+                "Your device list and device summaries are stored in your account on Google Firebase so your phones " +
+                "can see each other. Security rules allow only you to read or change them. Turn off \"Share this " +
+                "phone's summary\" in My Devices to stop sharing a phone's summary.",
         )
         InfoCard(
             "BACKUP & RESTORE",

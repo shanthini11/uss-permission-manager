@@ -13,6 +13,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.group8.permissionmanagerapp_uss.ui.auth.AuthFlow
 import com.group8.permissionmanagerapp_uss.ui.auth.AuthGate
 import com.group8.permissionmanagerapp_uss.ui.auth.AuthViewModel
+import com.group8.permissionmanagerapp_uss.ui.devices.DeviceGate
+import com.group8.permissionmanagerapp_uss.ui.devices.DeviceGateFlow
+import com.group8.permissionmanagerapp_uss.ui.devices.DeviceGateViewModel
 import com.group8.permissionmanagerapp_uss.ui.navigation.PermissionManagerRoot
 import com.group8.permissionmanagerapp_uss.ui.theme.PermissionManagerAppUSSTheme
 import kotlinx.coroutines.launch
@@ -32,12 +35,21 @@ class MainActivity : ComponentActivity() {
                 val gate by authViewModel.gate.collectAsStateWithLifecycle()
                 when (val g = gate) {
                     // Only fully signed-in users (password + email code) reach the app.
-                    is AuthGate.SignedIn -> PermissionManagerRoot(
-                        userName = g.name,
-                        userEmail = g.email,
-                        onSignOut = authViewModel::signOut,
-                        openNotificationsRequest = openNotificationsRequest.intValue,
-                    )
+                    is AuthGate.SignedIn -> {
+                        // Then this phone must be an approved device on the account (refinements #2–#6).
+                        val deviceViewModel: DeviceGateViewModel = viewModel(key = "device-gate-${g.email}", factory = DeviceGateViewModel.Factory)
+                        val deviceGate by deviceViewModel.gate.collectAsStateWithLifecycle()
+                        if (deviceGate == DeviceGate.Approved) {
+                            PermissionManagerRoot(
+                                userName = g.name,
+                                userEmail = g.email,
+                                onSignOut = authViewModel::signOut,
+                                openNotificationsRequest = openNotificationsRequest.intValue,
+                            )
+                        } else {
+                            DeviceGateFlow(deviceGate, deviceViewModel, onSignOut = authViewModel::signOut)
+                        }
+                    }
                     else -> AuthFlow(g, authViewModel)
                 }
             }

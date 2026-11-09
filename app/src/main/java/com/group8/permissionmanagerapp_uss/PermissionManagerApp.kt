@@ -6,6 +6,8 @@ import com.group8.permissionmanagerapp_uss.data.AppsRepository
 import com.group8.permissionmanagerapp_uss.data.auth.AuthRepository
 import com.group8.permissionmanagerapp_uss.data.auth.OtpService
 import com.group8.permissionmanagerapp_uss.data.backup.BackupRepository
+import com.group8.permissionmanagerapp_uss.data.devices.DeviceIdentity
+import com.group8.permissionmanagerapp_uss.data.devices.DeviceRepository
 import com.group8.permissionmanagerapp_uss.data.history.HistoryRepository
 import com.group8.permissionmanagerapp_uss.data.history.PermissionMonitor
 import com.group8.permissionmanagerapp_uss.data.repository.DemoPermissionRepository
@@ -44,6 +46,8 @@ class AppContainer(context: Context) {
     val otp = OtpService(BuildConfig.OTP_SERVICE_URL, auth)
     val returnWatcher = ReturnWatcher(context, devicePermissions, notifier, appScope)
     val backup = BackupRepository(context, history, preferences)
+    val deviceIdentity = DeviceIdentity(context)
+    val devices = DeviceRepository(auth, deviceIdentity, devicePermissions, preferences)
 }
 
 class PermissionManagerApp : Application() {

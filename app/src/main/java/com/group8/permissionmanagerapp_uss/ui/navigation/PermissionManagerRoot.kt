@@ -23,6 +23,8 @@ import com.group8.permissionmanagerapp_uss.AppInfo
 import androidx.compose.runtime.LaunchedEffect
 import com.group8.permissionmanagerapp_uss.ui.history.HistoryScreen
 import com.group8.permissionmanagerapp_uss.ui.auth.ProfileScreen
+import com.group8.permissionmanagerapp_uss.ui.devices.JoinApprovalHost
+import com.group8.permissionmanagerapp_uss.ui.devices.MyDevicesScreen
 import com.group8.permissionmanagerapp_uss.ui.history.NotificationsScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -40,7 +42,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.group8.permissionmanagerapp_uss.ui.appdetail.AppDetailScreen
 import com.group8.permissionmanagerapp_uss.ui.apps.AppsScreen
-import com.group8.permissionmanagerapp_uss.ui.common.ComingSoonScreen
 import com.group8.permissionmanagerapp_uss.ui.settings.SettingsScreen
 import com.group8.permissionmanagerapp_uss.ui.settings.AboutScreen
 import com.group8.permissionmanagerapp_uss.ui.settings.BackupScreen
@@ -61,6 +62,9 @@ fun PermissionManagerRoot(
 ) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // When another phone asks to join this account, show the approval code here, on any screen.
+    JoinApprovalHost()
 
     // Tapping a system notification opens the Notifications screen.
     LaunchedEffect(openNotificationsRequest) {
@@ -170,9 +174,7 @@ fun PermissionManagerRoot(
                     onSignOut = onSignOut,
                 )
             }
-            composable<DevicesRoute> {
-                ComingSoonScreen("My Devices", "Manage permissions across your devices. Arrives with the multi-device update.")
-            }
+            composable<DevicesRoute> { MyDevicesScreen(snackbarHostState = snackbarHostState) }
             composable<SettingsRoute> {
                 SettingsScreen(
                     onMyDevices = { navController.navigateSingle(DevicesRoute) },

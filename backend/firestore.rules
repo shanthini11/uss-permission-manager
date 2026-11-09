@@ -1,0 +1,72 @@
+rules_version = '2';
+
+// Permission Tracker — Firestore security rules.
+// Paste into Firebase console > Firestore Database > Rules > Publish.
+//
+// Model: users/{uid}, users/{uid}/devices/{deviceId}, users/{uid}/joinRequests/{deviceId}.
+// Every path is readable/writable ONLY by the signed-in owner, and every write is validated
+// (allowed fields, types and sizes), so a modified app can't store junk or huge documents.
+// Anything not matched below is denied.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+    function nowish(t) { return t is int && t > 0 && t <= request.time.toMillis() + 300000; }
+
+    match /users/{uid} {
+      // Review preferences shared between the user's devices.
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['notificationsEnabled', 'historyEnabled', 'periodicReview', 'updatedAt'])
+        && request.resource.data.notificationsEnabled is bool
+        && request.resource.data.historyEnabled is bool
+        && request.resource.data.periodicReview is bool
+        && nowish(request.resource.data.updatedAt);
+      allow delete: if false;
+
+      match /devices/{deviceId} {
+        function validSummary(s) {
+          return s is map
+            && s.keys().hasOnly(['appCount', 'highRisk', 'background', 'critical', 'updatedAt', 'topApps'])
+            && s.appCount is int && s.highRisk is int && s.background is int && s.critical is int
+            && s.topApps is list && s.topApps.size() <= 10;
+        }
+        function validDevice(d) {
+          return d.keys().hasOnly(['name', 'model', 'os', 'platform', 'addedAt', 'lastActive', 'shareSummary', 'summary'])
+            && str(d.name, 1, 40) && str(d.model, 0, 40) && str(d.os, 0, 30)
+            && d.platform == 'Android'
+            && nowish(d.addedAt) && nowish(d.lastActive)
+            && d.shareSummary is bool
+            && (!('summary' in d) || validSummary(d.summary));
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && str(deviceId, 36, 36) && validDevice(request.resource.data);
+        // A device's identity fields can't be rewritten after it's added.
+        allow update: if isOwner(uid) && validDevice(request.resource.data)
+          && request.resource.data.addedAt == resource.data.addedAt
+          && request.resource.data.platform == resource.data.platform;
+      }
+
+      match /joinRequests/{deviceId} {
+        function validRequest(r) {
+          return r.keys().hasOnly(['name', 'model', 'os', 'requestedAt', 'status', 'attempts', 'codeHash', 'codeSalt', 'codeExpiresAt'])
+            && str(r.name, 1, 40) && str(r.model, 0, 40) && str(r.os, 0, 30)
+            && nowish(r.requestedAt)
+            && r.status in ['pending', 'denied']
+            && r.attempts is int && r.attempts >= 0 && r.attempts <= 5
+            && (!('codeHash' in r) || str(r.codeHash, 64, 64))
+            && (!('codeSalt' in r) || str(r.codeSalt, 32, 32))
+            && (!('codeExpiresAt' in r) || (r.codeExpiresAt is int && r.codeExpiresAt <= request.time.toMillis() + 360000));
+        }
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && str(deviceId, 36, 36) && validRequest(request.resource.data)
+          && request.resource.data.status == 'pending' && request.resource.data.attempts == 0
+          && !('codeHash' in request.resource.data);
+        allow update: if isOwner(uid) && validRequest(request.resource.data);
+      }
+    }
+  }
+}
