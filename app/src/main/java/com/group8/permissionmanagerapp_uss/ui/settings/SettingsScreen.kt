@@ -1,5 +1,10 @@
 package com.group8.permissionmanagerapp_uss.ui.settings
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import com.group8.permissionmanagerapp_uss.AppInfo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,12 +61,14 @@ class SettingsViewModel(private val prefs: UserPreferencesRepository) : ViewMode
     }
 }
 
-/**
- * Settings. Day 1 has the app-data options; Notifications, History, Periodic Review,
- * Backup & Restore, Privacy Information, About and Delete Local Data arrive on Days 3–5.
- */
+/** Lo-fi "Settings": every row from the refined design, plus Demo mode for testers. */
 @Composable
 fun SettingsScreen(
+    onMyDevices: () -> Unit,
+    onBackup: () -> Unit,
+    onPrivacy: () -> Unit,
+    onAbout: () -> Unit,
+    onDeleteData: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
 ) {
@@ -97,6 +104,18 @@ fun SettingsScreen(
             checked = prefs.periodicReview,
             onCheckedChange = viewModel::setPeriodicReview,
         )
+        NavRow("My Devices", "Select and manage devices", onMyDevices)
+        NavRow("Backup & Restore", "Export or import your preferences and history as an encrypted file", onBackup)
+        NavRow("Privacy Information", "How your data is handled", onPrivacy)
+        NavRow("About ${AppInfo.NAME}", "Version ${AppInfo.VERSION}", onAbout)
+        NavRow("Delete Local Data", "Delete history and preferences · Confirm first", onDeleteData)
+
+        Text(
+            "For testing",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
         ToggleRow(
             title = "Demo mode",
             subtitle = "Show sample apps instead of the apps on this phone. Useful for trying the " +
@@ -110,6 +129,22 @@ fun SettingsScreen(
             checked = prefs.showSystemApps,
             onCheckedChange = viewModel::setShowSystemApps,
         )
+    }
+}
+
+@Composable
+private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
+    SectionCard {
+        Row(
+            Modifier.clickable(role = Role.Button, onClick = onClick).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
     }
 }
 

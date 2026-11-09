@@ -42,6 +42,10 @@ import com.group8.permissionmanagerapp_uss.ui.appdetail.AppDetailScreen
 import com.group8.permissionmanagerapp_uss.ui.apps.AppsScreen
 import com.group8.permissionmanagerapp_uss.ui.common.ComingSoonScreen
 import com.group8.permissionmanagerapp_uss.ui.settings.SettingsScreen
+import com.group8.permissionmanagerapp_uss.ui.settings.AboutScreen
+import com.group8.permissionmanagerapp_uss.ui.settings.BackupScreen
+import com.group8.permissionmanagerapp_uss.ui.settings.DeleteDataScreen
+import com.group8.permissionmanagerapp_uss.ui.settings.PrivacyInfoScreen
 import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
 import com.group8.permissionmanagerapp_uss.ui.overview.BackgroundRiskScreen
 import com.group8.permissionmanagerapp_uss.ui.overview.CategoriesScreen
@@ -169,7 +173,19 @@ fun PermissionManagerRoot(
             composable<DevicesRoute> {
                 ComingSoonScreen("My Devices", "Manage permissions across your devices. Arrives with the multi-device update.")
             }
-            composable<SettingsRoute> { SettingsScreen() }
+            composable<SettingsRoute> {
+                SettingsScreen(
+                    onMyDevices = { navController.navigateSingle(DevicesRoute) },
+                    onBackup = { navController.navigateSingle(BackupRoute) },
+                    onPrivacy = { navController.navigateSingle(PrivacyInfoRoute) },
+                    onAbout = { navController.navigateSingle(AboutRoute) },
+                    onDeleteData = { navController.navigateSingle(DeleteDataRoute) },
+                )
+            }
+            composable<BackupRoute> { BackupScreen() }
+            composable<PrivacyInfoRoute> { PrivacyInfoScreen() }
+            composable<AboutRoute> { AboutScreen() }
+            composable<DeleteDataRoute> { DeleteDataScreen() }
             composable<AppDetailRoute> { entry ->
                 val route = entry.toRoute<AppDetailRoute>()
                 AppDetailScreen(
@@ -195,6 +211,10 @@ private fun titleFor(destination: NavDestination?, tab: TopLevelDestination?): S
     destination.isOn(NotificationsRoute) -> "Notifications"
     destination.isOn(ProfileRoute) -> "Profile"
     destination.isOn(DevicesRoute) -> "My Devices"
+    destination.isOn(BackupRoute) -> "Backup & Restore"
+    destination.isOn(PrivacyInfoRoute) -> "Privacy Information"
+    destination.isOn(AboutRoute) -> "About"
+    destination.isOn(DeleteDataRoute) -> "Delete Local Data"
     destination.isOn(SettingsRoute) -> "Settings"
     else -> AppInfo.NAME
 }

@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -18,6 +19,8 @@ data class UserPreferences(
     val historyEnabled: Boolean = true,
     /** Lo-fi "Periodic Review": weekly permission-review reminders. */
     val periodicReview: Boolean = true,
+    /** Epoch millis of the last successful backup export, or null if never. */
+    val lastBackupAt: Long? = null,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
@@ -34,6 +37,7 @@ class UserPreferencesRepository(context: Context) {
             notificationsEnabled = p[NOTIFICATIONS] ?: true,
             historyEnabled = p[HISTORY] ?: true,
             periodicReview = p[PERIODIC_REVIEW] ?: true,
+            lastBackupAt = p[LAST_BACKUP],
         )
     }
 
@@ -42,6 +46,19 @@ class UserPreferencesRepository(context: Context) {
     suspend fun setNotificationsEnabled(enabled: Boolean) = set(NOTIFICATIONS, enabled)
     suspend fun setHistoryEnabled(enabled: Boolean) = set(HISTORY, enabled)
     suspend fun setPeriodicReview(enabled: Boolean) = set(PERIODIC_REVIEW, enabled)
+
+    suspend fun setLastBackupAt(time: Long) {
+        store.edit { it[LAST_BACKUP] = time }
+    }
+
+    /** Restores the review preferences from a backup (not Demo mode or system-app display). */
+    suspend fun restoreReviewPreferences(notifications: Boolean, history: Boolean, periodicReview: Boolean) {
+        store.edit {
+            it[NOTIFICATIONS] = notifications
+            it[HISTORY] = history
+            it[PERIODIC_REVIEW] = periodicReview
+        }
+    }
 
     /** Resets every preference to its default (Settings > Delete Local Data). */
     suspend fun clear() {
@@ -58,5 +75,6 @@ class UserPreferencesRepository(context: Context) {
         val NOTIFICATIONS = booleanPreferencesKey("notifications_enabled")
         val HISTORY = booleanPreferencesKey("history_enabled")
         val PERIODIC_REVIEW = booleanPreferencesKey("periodic_review")
+        val LAST_BACKUP = longPreferencesKey("last_backup_at")
     }
 }

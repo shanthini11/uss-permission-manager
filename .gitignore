@@ -26,3 +26,6 @@ google-services.json
 *.jks
 *.keystore
 keystore.properties
+
+# Local build logs
+build-log.txt

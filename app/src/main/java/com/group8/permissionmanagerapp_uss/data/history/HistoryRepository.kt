@@ -129,6 +129,22 @@ class HistoryRepository(
         }
     }
 
+    /** Real (non-demo) events for a backup file. */
+    suspend fun exportEvents(): List<PermissionEvent> {
+        ensureLoaded()
+        return state.value?.events.orEmpty().filter { !it.isDemo }
+    }
+
+    /**
+     * Merges events from a backup. Existing entries with the same id are kept; entries older than
+     * the 30-day retention are dropped by [mutate]. Returns how many new entries were added.
+     */
+    suspend fun importEvents(events: List<PermissionEvent>): Int = mutate { file ->
+        val existing = file.events.map { it.id }.toSet()
+        val added = events.filter { it.id !in existing }.map { it.copy(isDemo = false) }
+        file.copy(events = file.events + added) to added.size
+    }
+
     /** Deletes all history and the snapshot (Settings > Delete Local Data). */
     suspend fun clearAll() {
         mutex.withLock {
