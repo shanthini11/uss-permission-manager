@@ -11,6 +11,7 @@ import com.group8.permissionmanagerapp_uss.data.repository.DemoPermissionReposit
 import com.group8.permissionmanagerapp_uss.data.repository.DevicePermissionRepository
 import com.group8.permissionmanagerapp_uss.data.settings.UserPreferencesRepository
 import com.group8.permissionmanagerapp_uss.work.Notifier
+import com.group8.permissionmanagerapp_uss.work.ReturnWatcher
 import com.group8.permissionmanagerapp_uss.work.WorkScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,7 @@ class AppContainer(context: Context) {
     val permissionMonitor = PermissionMonitor(devicePermissions, history, notifier, preferences)
     val auth = AuthRepository(context)
     val otp = OtpService(BuildConfig.OTP_SERVICE_URL, auth)
+    val returnWatcher = ReturnWatcher(context, devicePermissions, notifier, appScope)
 }
 
 class PermissionManagerApp : Application() {

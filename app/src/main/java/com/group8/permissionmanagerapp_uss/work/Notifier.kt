@@ -37,6 +37,46 @@ class Notifier(private val context: Context) {
                 description = "A weekly reminder to review app permissions"
             }
         )
+        // High importance so it appears as a banner over the Settings app.
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_RETURN, "Return after a change", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "A one-tap shortcut back to the app after you change a permission in Android Settings"
+            }
+        )
+    }
+
+    /** Banner shown over Android Settings once the guided change is detected. */
+    fun notifyReturnPrompt(message: String) {
+        if (!canPost()) return
+        val pending = PendingIntent.getActivity(
+            context,
+            ID_RETURN,
+            // CLEAR_TOP closes the Settings pages stacked above our screen in one tap.
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_RETURN)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Change confirmed ✓")
+            .setContentText("$message. Tap to return to ${AppInfo.NAME}.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$message. Tap to return to ${AppInfo.NAME}."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setTimeoutAfter(RETURN_TIMEOUT_MS)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(ID_RETURN, notification)
+        } catch (_: SecurityException) {
+            // Permission revoked meanwhile; the user can still press Back.
+        }
+    }
+
+    fun cancelReturnPrompt() {
+        NotificationManagerCompat.from(context).cancel(ID_RETURN)
     }
 
     fun canPost(): Boolean =
@@ -119,8 +159,11 @@ class Notifier(private val context: Context) {
     companion object {
         const val CHANNEL_CHANGES = "permission_changes"
         const val CHANNEL_REVIEW = "weekly_review"
+        const val CHANNEL_RETURN = "return_prompt"
         private const val ID_CHANGES = 1001
         private const val ID_REVIEW = 1002
+        private const val ID_RETURN = 1003
+        private const val RETURN_TIMEOUT_MS = 2 * 60 * 1000L
 
         fun describe(event: PermissionEvent): String {
             val category = event.category?.title ?: return event.appLabel

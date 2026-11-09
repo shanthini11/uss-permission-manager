@@ -54,6 +54,8 @@ class MainActivity : ComponentActivity() {
         // Catch changes made while we were away (e.g. in Android Settings). History and the
         // Notifications screen update; no system notification since the user is here.
         val container = (application as PermissionManagerApp).container
+        // Back in the app (via the banner or Back): stop watching and clear the "Tap to return" banner.
+        container.returnWatcher.stop()
         lifecycleScope.launch {
             runCatching { container.permissionMonitor.check(postNotifications = false) }
             container.appsRepository.refresh()

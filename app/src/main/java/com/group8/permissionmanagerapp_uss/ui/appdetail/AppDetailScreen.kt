@@ -1,6 +1,14 @@
 package com.group8.permissionmanagerapp_uss.ui.appdetail
 
+import android.Manifest
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.remember
+import androidx.core.content.ContextCompat
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -87,6 +95,24 @@ fun AppDetailScreen(
     val identity = rememberIdentityGuard()
     identity.Dialog()
 
+    // The "Tap to return" banner needs notification permission (Android 13+). Ask once, just before
+    // going to Settings; whatever the answer, continue to Settings.
+    var afterNotificationPrompt by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        afterNotificationPrompt?.invoke()
+        afterNotificationPrompt = null
+    }
+    val goToSettings: (() -> Unit) -> Unit = { proceed ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            afterNotificationPrompt = proceed
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            proceed()
+        }
+    }
+
     LifecycleResumeEffect(packageName) {
         viewModel.refresh()
         onPauseOrDispose { }
@@ -145,8 +171,12 @@ fun AppDetailScreen(
                     appLabel = app.label,
                     pending = pending,
                     onOpenSettings = {
-                        viewModel.onGuideConfirmed()
-                        if (!openAppSystemSettings(context, packageName)) viewModel.onSettingsOpenFailed()
+                        // Ask for notifications first: the pending change must only be recorded right before
+                        // Settings opens, otherwise returning from the prompt would trigger the check early.
+                        goToSettings {
+                            viewModel.onGuideConfirmed()
+                            if (!openAppSystemSettings(context, packageName)) viewModel.onSettingsOpenFailed()
+                        }
                     },
                     onDismiss = viewModel::dismissGuide,
                 )
@@ -164,8 +194,10 @@ fun AppDetailScreen(
                     appLabel = app.label,
                     categories = categories,
                     onOpenSettings = {
-                        viewModel.onRevokeAllGuideConfirmed()
-                        if (!openAppSystemSettings(context, packageName)) viewModel.onRevokeAllSettingsFailed()
+                        goToSettings {
+                            viewModel.onRevokeAllGuideConfirmed()
+                            if (!openAppSystemSettings(context, packageName)) viewModel.onRevokeAllSettingsFailed()
+                        }
                     },
                     onDismiss = viewModel::cancelRevokeAll,
                 )
@@ -182,10 +214,11 @@ fun AppDetailScreen(
  * another app's permissions, so the final switch happens there.
  */
 fun openAppSystemSettings(context: Context, packageName: String): Boolean = try {
-    context.startActivity(
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    )
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+    // From an Activity, open Settings in our own task: the "Tap to return" banner (CLEAR_TOP) can then
+    // close all the Settings pages in one go, and Back eventually lands in our app.
+    if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
     true
 } catch (_: ActivityNotFoundException) {
     false

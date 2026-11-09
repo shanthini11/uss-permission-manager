@@ -16,6 +16,7 @@ import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
 import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
 import com.group8.permissionmanagerapp_uss.data.model.PermissionChoice
 import com.group8.permissionmanagerapp_uss.data.settings.UserPreferencesRepository
+import com.group8.permissionmanagerapp_uss.work.ReturnWatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,6 +88,7 @@ class AppDetailViewModel(
     private val appsRepository: AppsRepository,
     private val history: HistoryRepository,
     private val preferences: UserPreferencesRepository,
+    private val returnWatcher: ReturnWatcher,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
@@ -148,10 +150,12 @@ class AppDetailViewModel(
         savedState[KEY_CATEGORY] = pending.category.name
         savedState[KEY_CHOICE] = pending.choice.name
         savedState[KEY_FROM] = from?.name
+        returnWatcher.watch(packageName, pending.category, pending.choice)
         _uiState.update { it.copy(guide = null) }
     }
 
     fun onSettingsOpenFailed() {
+        returnWatcher.stop()
         val category = savedState.get<String>(KEY_CATEGORY)
         val choice = savedState.get<String>(KEY_CHOICE)
         clearAwaiting()
@@ -236,10 +240,12 @@ class AppDetailViewModel(
     fun onRevokeAllGuideConfirmed() {
         val categories = _uiState.value.revokeAllGuide ?: return
         savedState[KEY_REVOKE_ALL] = categories.joinToString(",") { it.name }
+        returnWatcher.watchRevokeAll(packageName, categories)
         _uiState.update { it.copy(revokeAllGuide = null) }
     }
 
     fun onRevokeAllSettingsFailed() {
+        returnWatcher.stop()
         savedState.remove<String>(KEY_REVOKE_ALL)
         val app = _uiState.value.app ?: return
         _uiState.update {
@@ -277,6 +283,7 @@ class AppDetailViewModel(
                     appsRepository = app.container.appsRepository,
                     history = app.container.history,
                     preferences = app.container.preferences,
+                    returnWatcher = app.container.returnWatcher,
                     savedState = createSavedStateHandle(),
                 )
             }
