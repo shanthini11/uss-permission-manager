@@ -82,7 +82,7 @@ class DeviceGateViewModel(
             is DeviceStatus.NeedsSetup ->
                 if (status.first) {
                     // First device on the account: nothing to verify against.
-                    devices.registerFirstDevice(devices.defaultName())
+                    devices.registerFirstDevice()
                     _gate.value = DeviceGate.Approved
                 } else {
                     _gate.value = DeviceGate.Setup(status.otherDevices, devices.defaultName())
@@ -133,12 +133,10 @@ class DeviceGateViewModel(
     }
 
     fun verifyEmailCode(code: String) = run {
-        when (val r = otp.verifyCode(code)) {
-            OtpService.Result.Ok -> {
-                devices.approveAfterEmailCode()
-                added()
-            }
-            is OtpService.Result.Error -> throw DeviceException(r.message)
+        if (code.length != 6) throw DeviceException("Enter the 6-digit code from the email.")
+        when (val r = devices.approveByEmailCode(code)) {
+            DeviceRepository.VerifyResult.Ok -> added()
+            is DeviceRepository.VerifyResult.Error -> throw DeviceException(r.message)
         }
     }
 

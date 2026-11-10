@@ -47,7 +47,7 @@ class AppContainer(context: Context) {
     val returnWatcher = ReturnWatcher(context, devicePermissions, notifier, appScope)
     val backup = BackupRepository(context, history, preferences)
     val deviceIdentity = DeviceIdentity(context)
-    val devices = DeviceRepository(auth, deviceIdentity, devicePermissions, preferences)
+    val devices = DeviceRepository(auth, deviceIdentity, otp, devicePermissions, preferences)
 }
 
 class PermissionManagerApp : Application() {

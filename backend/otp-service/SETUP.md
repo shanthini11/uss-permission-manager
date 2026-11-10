@@ -29,6 +29,24 @@ paid plan, so this small script runs free on Google Apps Script and sends mail f
    ```
 8. Rebuild the app.
 
+## Required: server-side enforcement (service account key, free)
+
+This lets the script mark sign-ins as 2FA-verified (Firestore rules check this) and add approved
+devices. Without it, signing in and device approval don't work.
+
+1. Firebase console (your project) → ⚙ **Project settings** → **Service accounts** tab.
+2. Click **Generate new private key** → **Generate key**. A `.json` file downloads.
+3. Open that file in Notepad, select **everything** (Ctrl+A) and copy it.
+4. Apps Script → ⚙ Project Settings → Script Properties → **Add script property**:
+   | Property | Value |
+   |---|---|
+   | `SERVICE_ACCOUNT_JSON` | the whole contents of the JSON file |
+5. **Delete the downloaded `.json` file** from your computer (and empty the Recycle Bin). It's a
+   powerful admin key: never commit it, email it or put it in the app.
+6. Run `setupCheck` again (the log should say `Setup OK`), then **Deploy → Manage deployments →
+   ✏ Edit → Version: New version → Deploy**.
+7. Publish the latest [`../firestore.rules`](../firestore.rules) in Firestore → Rules.
+
 ## Recommended: add Brevo for 300 more emails a day (free, no card)
 
 Gmail alone allows about 100 emails a day. With Brevo the service can send about **390 codes a day**.

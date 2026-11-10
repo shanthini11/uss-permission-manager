@@ -4,22 +4,31 @@ rules_version = '2';
 // Paste into Firebase console > Firestore Database > Rules > Publish.
 //
 // Model: users/{uid}, users/{uid}/devices/{deviceId}, users/{uid}/joinRequests/{deviceId}.
-// Every path is readable/writable ONLY by the signed-in owner, and every write is validated
-// (allowed fields, types and sizes), so a modified app can't store junk or huge documents.
-// Anything not matched below is denied.
+//
+// 1. Owner only: every path is readable/writable only by the signed-in owner.
+// 2. Server-enforced 2FA: the request's login session (auth_time) must be listed in the
+//    `mfaSessions` custom claim, which only our verification service sets after a correct email
+//    code. A password-only sign-in (e.g. through Firebase's REST API) gets nothing.
+// 3. Server-enforced device approval: clients can never create a device. Only the verification
+//    service (admin credentials) adds devices, after checking a join code or an email code.
+// 4. Every client write is validated (allowed fields, types, sizes). Anything else is denied.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
-    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function verified(uid) {
+      return request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.mfaSessions is list
+        && request.auth.token.auth_time in request.auth.token.mfaSessions;
+    }
     function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     function nowish(t) { return t is int && t > 0 && t <= request.time.toMillis() + 300000; }
 
     match /users/{uid} {
       // Review preferences shared between the user's devices.
-      allow read: if isOwner(uid);
-      allow create, update: if isOwner(uid)
+      allow read: if verified(uid);
+      allow create, update: if verified(uid)
         && request.resource.data.keys().hasOnly(['notificationsEnabled', 'historyEnabled', 'periodicReview', 'updatedAt'])
         && request.resource.data.notificationsEnabled is bool
         && request.resource.data.historyEnabled is bool
@@ -34,38 +43,38 @@ service cloud.firestore {
             && s.appCount is int && s.highRisk is int && s.background is int && s.critical is int
             && s.topApps is list && s.topApps.size() <= 10;
         }
-        function validDevice(d) {
-          return d.keys().hasOnly(['name', 'model', 'os', 'platform', 'addedAt', 'lastActive', 'shareSummary', 'summary'])
-            && str(d.name, 1, 40) && str(d.model, 0, 40) && str(d.os, 0, 30)
-            && d.platform == 'Android'
-            && nowish(d.addedAt) && nowish(d.lastActive)
-            && d.shareSummary is bool
-            && (!('summary' in d) || validSummary(d.summary));
-        }
-        allow read, delete: if isOwner(uid);
-        allow create: if isOwner(uid) && str(deviceId, 36, 36) && validDevice(request.resource.data);
-        // A device's identity fields can't be rewritten after it's added.
-        allow update: if isOwner(uid) && validDevice(request.resource.data)
+        allow read, delete: if verified(uid);
+        // Devices are added only by the verification service, never by the app.
+        allow create: if false;
+        // An existing device may update its activity, OS version and summary; identity fields are fixed.
+        allow update: if verified(uid)
+          && request.resource.data.keys().hasOnly(['name', 'model', 'os', 'platform', 'addedAt', 'lastActive', 'shareSummary', 'summary'])
+          && request.resource.data.name == resource.data.name
+          && request.resource.data.model == resource.data.model
+          && request.resource.data.platform == resource.data.platform
           && request.resource.data.addedAt == resource.data.addedAt
-          && request.resource.data.platform == resource.data.platform;
+          && str(request.resource.data.os, 0, 30)
+          && nowish(request.resource.data.lastActive)
+          && request.resource.data.shareSummary is bool
+          && (!('summary' in request.resource.data) || validSummary(request.resource.data.summary));
       }
 
       match /joinRequests/{deviceId} {
+        // Join codes are never stored here; the service only records when the current code expires.
         function validRequest(r) {
-          return r.keys().hasOnly(['name', 'model', 'os', 'requestedAt', 'status', 'attempts', 'codeHash', 'codeSalt', 'codeExpiresAt'])
+          return r.keys().hasOnly(['name', 'model', 'os', 'requestedAt', 'status', 'codeExpiresAt'])
             && str(r.name, 1, 40) && str(r.model, 0, 40) && str(r.os, 0, 30)
             && nowish(r.requestedAt)
-            && r.status in ['pending', 'denied']
-            && r.attempts is int && r.attempts >= 0 && r.attempts <= 5
-            && (!('codeHash' in r) || str(r.codeHash, 64, 64))
-            && (!('codeSalt' in r) || str(r.codeSalt, 32, 32))
-            && (!('codeExpiresAt' in r) || (r.codeExpiresAt is int && r.codeExpiresAt <= request.time.toMillis() + 360000));
+            && r.status in ['pending', 'denied'];
         }
-        allow read, delete: if isOwner(uid);
-        allow create: if isOwner(uid) && str(deviceId, 36, 36) && validRequest(request.resource.data)
-          && request.resource.data.status == 'pending' && request.resource.data.attempts == 0
-          && !('codeHash' in request.resource.data);
-        allow update: if isOwner(uid) && validRequest(request.resource.data);
+        allow read, delete: if verified(uid);
+        allow create: if verified(uid) && str(deviceId, 36, 36) && validRequest(request.resource.data)
+          && request.resource.data.status == 'pending'
+          && !('codeExpiresAt' in request.resource.data);
+        // Clients may deny or reset a request, but never set a code expiry themselves.
+        allow update: if verified(uid) && validRequest(request.resource.data)
+          && (!('codeExpiresAt' in request.resource.data)
+              || request.resource.data.codeExpiresAt == resource.data.codeExpiresAt);
       }
     }
   }

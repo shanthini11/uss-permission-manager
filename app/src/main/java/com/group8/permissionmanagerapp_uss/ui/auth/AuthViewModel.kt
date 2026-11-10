@@ -66,6 +66,12 @@ class AuthViewModel(
     init {
         viewModelScope.launch {
             auth.loadSession()
+            // If this phone thinks 2FA passed but the server hasn't marked this login session
+            // (e.g. signed in before server-side 2FA existed), ask for the email code again.
+            val user = auth.currentUser
+            if (user != null && auth.twoFactorUid.value == user.uid && !auth.hasServerMfa()) {
+                auth.clearTwoFactor()
+            }
             sessionLoaded.value = true
         }
     }
@@ -109,6 +115,8 @@ class AuthViewModel(
             when (val r = otp.verifyCode(trimmed)) {
                 is OtpService.Result.Ok -> {
                     val uid = auth.currentUser?.uid ?: throw AuthException("Please sign in again.")
+                    // The server just added this session to the 2FA claim; refresh so Firestore sees it.
+                    auth.refreshToken()
                     auth.markTwoFactorPassed(uid)
                     justCreated.value = false
                     _form.value = AuthFormState()

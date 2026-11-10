@@ -1,15 +1,19 @@
 package com.group8.permissionmanagerapp_uss.data.auth
 
+import com.group8.permissionmanagerapp_uss.AppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Client for the free email-code service (backend/otp-service/Code.gs on Google Apps Script).
- * The code is generated, emailed and checked on the server; the app never sees it except as user input.
+ * Client for the free verification service (backend/otp-service/Code.gs on Google Apps Script).
+ * Email codes and device join codes are generated, stored and checked on the server; the server
+ * also sets the 2FA custom claim and adds approved devices, which Firestore rules rely on.
  */
 class OtpService(
     private val serviceUrl: String,
@@ -20,59 +24,76 @@ class OtpService(
         data class Error(val message: String, val retryAfterSeconds: Int? = null) : Result
     }
 
+    /** Result of a device action; [code] is set only by `issueDeviceCode`. */
+    data class DeviceResult(val ok: Boolean, val message: String? = null, val code: String? = null)
+
     @Serializable
     private data class Response(
         val ok: Boolean = false,
         val error: String? = null,
         val retryAfter: Int? = null,
         val attemptsLeft: Int? = null,
+        val code: String? = null,
     )
 
     private val json = Json { ignoreUnknownKeys = true }
 
     val isConfigured: Boolean get() = serviceUrl.startsWith("https://script.google.com/")
 
-    suspend fun sendCode(): Result = call("send", null)
+    suspend fun sendCode(): Result = toResult(call("send", emptyMap()))
 
     suspend fun verifyCode(code: String): Result {
         if (!CODE_REGEX.matches(code)) return Result.Error("Enter the 6-digit code from the email.")
-        return call("verify", code)
+        return toResult(call("verify", mapOf("code" to code)))
     }
 
-    private suspend fun call(action: String, code: String?): Result {
-        if (!isConfigured) {
-            return Result.Error("The email code service isn't set up yet (see backend/otp-service/SETUP.md).")
-        }
+    suspend fun device(action: String, fields: Map<String, String>): DeviceResult {
+        val r = call(action, fields)
+        return DeviceResult(ok = r.ok, message = if (r.ok) null else message(r), code = r.code)
+    }
+
+    private suspend fun call(action: String, fields: Map<String, String>): Response {
+        if (!isConfigured) return Response(error = "not_configured")
         val token = try {
             auth.idToken()
-        } catch (e: AuthException) {
-            return Result.Error(e.message ?: "Please sign in again.")
+        } catch (_: AuthException) {
+            return Response(error = "unauthenticated")
         }
-        val body = buildString {
-            append("{\"action\":\"").append(action).append("\",\"idToken\":\"").append(token).append('"')
-            if (code != null) append(",\"code\":\"").append(code).append('"')
-            append('}')
-        }
+        // Built with a JSON library, so names and codes can never break out of their strings.
+        val body = buildJsonObject {
+            put("action", action)
+            put("idToken", token)
+            fields.forEach { (k, v) -> put(k, v) }
+        }.toString()
         return try {
             val text = withContext(Dispatchers.IO) { post(serviceUrl, body) }
-            toResult(json.decodeFromString(Response.serializer(), text))
+            json.decodeFromString(Response.serializer(), text)
         } catch (_: Exception) {
-            Result.Error("Couldn't reach the verification service. Check your internet connection.")
+            Response(error = "network")
         }
     }
 
-    private fun toResult(r: Response): Result = when {
-        r.ok -> Result.Ok
-        r.error == "invalid_code" && r.attemptsLeft != null ->
-            Result.Error("That code isn't right. ${r.attemptsLeft} ${if (r.attemptsLeft == 1) "try" else "tries"} left.")
-        r.error == "invalid_code" -> Result.Error("That code isn't right.")
-        r.error == "expired" -> Result.Error("That code has expired. Tap \"Resend code\" to get a new one.")
-        r.error == "too_many_attempts" -> Result.Error("Too many wrong tries. Tap \"Resend code\" to get a new one.")
-        r.error == "cooldown" -> Result.Error("Please wait a minute before asking for another code.", r.retryAfter)
-        r.error == "rate_limited" -> Result.Error("Too many codes requested. Please wait 15 minutes.")
-        r.error == "daily_limit" -> Result.Error("The email service has reached today's limit. Please try again tomorrow.")
-        r.error == "unauthenticated" -> Result.Error("Your sign-in expired. Please sign in again.")
-        else -> Result.Error("Something went wrong. Please try again.")
+    private fun toResult(r: Response): Result =
+        if (r.ok) Result.Ok else Result.Error(message(r), if (r.error == "cooldown") r.retryAfter else null)
+
+    private fun message(r: Response): String = when (r.error) {
+        "invalid_code" -> if (r.attemptsLeft != null) {
+            "That code isn't right. ${r.attemptsLeft} ${if (r.attemptsLeft == 1) "try" else "tries"} left."
+        } else "That code isn't right."
+        "expired" -> "That code has expired. Request a new one."
+        "too_many_attempts" -> "Too many wrong tries. Request a new code."
+        "cooldown" -> "Please wait a minute before asking for another code."
+        "rate_limited" -> "Too many codes requested. Please wait 15 minutes."
+        "daily_limit" -> "The email service has reached today's limit. Please try again tomorrow."
+        "unauthenticated" -> "Your sign-in expired. Please sign in again."
+        "mfa_required" -> "Please confirm it's you with an email code again (log out and sign in)."
+        "not_first" -> "Your account already has a device. This phone needs to be approved."
+        "not_approved_device" -> "This phone isn't an approved device on your account."
+        "no_request" -> "That request no longer exists. Request a new code."
+        "code_active" -> "A code for this request is already showing on another of your devices."
+        "not_configured" -> "The verification service isn't set up yet (see backend/otp-service/SETUP.md)."
+        "network" -> "Couldn't reach the verification service. Check your internet connection."
+        else -> "Something went wrong with ${AppInfo.NAME}'s verification service. Please try again."
     }
 
     /**
@@ -93,11 +114,11 @@ class OtpService(
         if (code in 300..399) {
             val location = conn.getHeaderField("Location") ?: error("Redirect without location")
             conn.disconnect()
-            val host = URL(location).host
-            require(URL(location).protocol == "https" && (host.endsWith(".googleusercontent.com") || host.endsWith(".google.com"))) {
+            val target = URL(location)
+            require(target.protocol == "https" && (target.host.endsWith(".googleusercontent.com") || target.host.endsWith(".google.com"))) {
                 "Unexpected redirect host"
             }
-            val get = (URL(location).openConnection() as HttpURLConnection).apply {
+            val get = (target.openConnection() as HttpURLConnection).apply {
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
             }
@@ -108,6 +129,6 @@ class OtpService(
 
     private companion object {
         val CODE_REGEX = Regex("^\\d{6}$")
-        const val TIMEOUT_MS = 15_000
+        const val TIMEOUT_MS = 20_000
     }
 }

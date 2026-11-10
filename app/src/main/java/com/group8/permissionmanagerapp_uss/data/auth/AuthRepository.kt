@@ -4,7 +4,11 @@ import android.content.Context
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
-import com.google.firebase.auth.EmailAuthProvider
+import com.google.firebase.FirebaseApp
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.net.HttpURLConnection
+import java.net.URL
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -74,12 +78,70 @@ class AuthRepository(context: Context) {
             .onFailure { if (it is FirebaseNetworkException) throw AuthException("No internet connection. Try again.") }
     }
 
-    /** "Verify your identity": re-enter the password before a sensitive action. */
-    suspend fun reauthenticate(password: String) = mapErrors {
-        val user = auth.currentUser ?: throw AuthException("You're signed out. Please sign in again.")
-        val email = user.email ?: throw AuthException("This account has no email address.")
-        user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
-        lastReauthAt = System.currentTimeMillis()
+    /**
+     * "Verify your identity": re-check the password before a sensitive action.
+     *
+     * Uses Firebase's password check endpoint instead of re-authenticating the session, because a
+     * re-authentication would start a new login session and invalidate the server-side 2FA marker.
+     * Firebase still rate-limits wrong guesses on the server.
+     */
+    suspend fun reauthenticate(password: String) {
+        val email = auth.currentUser?.email ?: throw AuthException("You're signed out. Please sign in again.")
+        val apiKey = FirebaseApp.getInstance().options.apiKey
+        val body = buildJsonObject {
+            put("email", email)
+            put("password", password)
+            put("returnSecureToken", false)
+        }.toString()
+        val (status, text) = try {
+            withContext(Dispatchers.IO) {
+                val conn = (URL("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey")
+                    .openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    connectTimeout = 15_000
+                    readTimeout = 15_000
+                    setRequestProperty("Content-Type", "application/json")
+                }
+                conn.outputStream.use { it.write(body.toByteArray()) }
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                (code to (stream?.bufferedReader()?.use { it.readText() } ?: "")).also { conn.disconnect() }
+            }
+        } catch (_: Exception) {
+            throw AuthException("No internet connection. Try again.")
+        }
+        when {
+            status in 200..299 -> lastReauthAt = System.currentTimeMillis()
+            "TOO_MANY_ATTEMPTS" in text -> throw AuthException("Too many attempts. Please wait a few minutes and try again.")
+            else -> throw AuthException("That password isn't right.")
+        }
+    }
+
+    /** Gets a fresh ID token so new custom claims (the server's 2FA marker) take effect immediately. */
+    suspend fun refreshToken() = mapErrors {
+        auth.currentUser?.getIdToken(true)?.await()
+        Unit
+    }
+
+    /**
+     * True if the server has marked THIS login session as 2FA-verified (custom claim `mfaSessions`
+     * contains the session's `auth_time`). Firestore rules require the same.
+     */
+    suspend fun hasServerMfa(): Boolean = try {
+        val claims = auth.currentUser?.getIdToken(false)?.await()?.claims.orEmpty()
+        val authTime = (claims["auth_time"] as? Number)?.toLong()
+        val sessions = (claims["mfaSessions"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() }.orEmpty()
+        authTime != null && authTime in sessions
+    } catch (_: Exception) {
+        // Offline: trust the local flag; Firestore will enforce the real check when online.
+        true
+    }
+
+    /** Forgets the local "2FA passed" flag so the email code is asked again. */
+    suspend fun clearTwoFactor() = withContext(Dispatchers.IO) {
+        sessionStore.delete()
+        _twoFactorUid.value = null
     }
 
     /** True if the password was confirmed in the last [REAUTH_GRACE_MS] (avoids asking repeatedly). */

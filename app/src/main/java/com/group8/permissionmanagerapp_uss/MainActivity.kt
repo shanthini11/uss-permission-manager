@@ -28,6 +28,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Tapjacking protection: ignore touches while another app draws over this window
+        // (e.g. a fake overlay trying to trick the user into tapping "Apply" or "Remove").
+        window.decorView.filterTouchesWhenObscured = true
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             PermissionManagerAppUSSTheme {

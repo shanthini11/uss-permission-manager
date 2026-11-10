@@ -1,12 +1,18 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# Permission Tracker R8 keep rules.
+# Libraries (Firebase, kotlinx.serialization, AndroidX) ship their own consumer rules.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Enum constant names are stored (saved state, navigation arguments) and parsed back with valueOf(),
+# so keep their names stable across builds.
+-keepclassmembers enum com.group8.permissionmanagerapp_uss.** {
+    <fields>;
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# Strip verbose/debug logging calls from release builds (defence in depth: the app doesn't log
+# personal data, but libraries might).
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}

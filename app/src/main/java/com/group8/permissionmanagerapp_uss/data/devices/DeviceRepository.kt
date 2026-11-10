@@ -8,16 +8,16 @@ import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.firestore.SetOptions
 import com.group8.permissionmanagerapp_uss.data.auth.AuthRepository
+import com.group8.permissionmanagerapp_uss.data.auth.OtpService
 import com.group8.permissionmanagerapp_uss.data.auth.await
 import com.group8.permissionmanagerapp_uss.data.model.RiskLevel
+import com.group8.permissionmanagerapp_uss.data.model.Sensitivity
 import com.group8.permissionmanagerapp_uss.data.repository.PermissionRepository
 import com.group8.permissionmanagerapp_uss.data.settings.UserPreferencesRepository
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 
 class DeviceException(message: String) : Exception(message)
 
@@ -26,11 +26,15 @@ class DeviceException(message: String) : Exception(message)
  *   users/{uid}                     review preferences, so a new device can import them
  *   users/{uid}/devices/{id}        approved devices + their optional permission summary
  *   users/{uid}/joinRequests/{id}   devices waiting for approval
- * Firestore security rules (firestore.rules) restrict every path to its owner and validate fields.
+ *
+ * Security: Firestore rules (backend/firestore.rules) require a server-verified 2FA session for
+ * every read/write and forbid clients from creating devices. Adding a device, issuing join codes
+ * and checking them all happen in the verification service (backend/otp-service/Code.gs).
  */
 class DeviceRepository(
     private val auth: AuthRepository,
     private val identity: DeviceIdentity,
+    private val backend: OtpService,
     private val devicePermissions: PermissionRepository,
     private val preferences: UserPreferencesRepository,
     private val now: () -> Long = System::currentTimeMillis,
@@ -69,17 +73,17 @@ class DeviceRepository(
             }
             else -> {
                 val request = requests().document(id).get().await().takeIf { it.exists() }?.let(::toRequest)
-                when {
-                    request != null -> DeviceStatus.Pending(request, others)
-                    else -> DeviceStatus.NeedsSetup(first = all.isEmpty(), otherDevices = others)
-                }
+                if (request != null) DeviceStatus.Pending(request, others)
+                else DeviceStatus.NeedsSetup(first = all.isEmpty(), otherDevices = others)
             }
         }
     }
 
-    /** First device on the account: nothing to verify against, so it's approved directly. */
-    suspend fun registerFirstDevice(name: String) = guard {
-        writeApprovedDevice(name.ifBlank { defaultName() })
+    /** First device on the account. The server checks the account really has no devices. */
+    suspend fun registerFirstDevice() = guard {
+        val id = identity.deviceId()
+        serverAction("registerFirstDevice", mapOf("deviceId" to id, "name" to defaultName(), "model" to model(), "os" to osVersion()))
+        identity.setApprovedFor(uid())
     }
 
     /** Refinement #3 "Add New Device": ask the account's other devices for approval. */
@@ -93,7 +97,6 @@ class DeviceRepository(
                 "os" to osVersion(),
                 "requestedAt" to now(),
                 "status" to JoinRequest.STATUS_PENDING,
-                "attempts" to 0,
             )
         ).await()
     }
@@ -106,52 +109,28 @@ class DeviceRepository(
         awaitClose { reg.remove() }
     }
 
-    /** Refinement #4 "Verify New Device": check the code shown on the other device. */
+    /** Refinement #4 "Verify New Device": the server checks the code and adds this device. */
     suspend fun verifyJoinCode(code: String): VerifyResult = guard {
-        val id = identity.deviceId()
-        val ref = requests().document(id)
-        val snap = ref.get().await()
-        if (!snap.exists()) return@guard VerifyResult.Error("This request has expired. Request a new code.")
-        val hash = snap.getString("codeHash")
-        val salt = snap.getString("codeSalt")
-        val expires = snap.getLong("codeExpiresAt") ?: 0
-        val attempts = (snap.getLong("attempts") ?: 0).toInt()
-        when {
-            snap.getString("status") == JoinRequest.STATUS_DENIED ->
-                VerifyResult.Error("This request was denied on your other device.")
-            hash == null || salt == null ->
-                VerifyResult.Error("No code yet. Open ${com.group8.permissionmanagerapp_uss.AppInfo.NAME} on your other device to see it.")
-            expires < now() -> VerifyResult.Error("That code has expired. Request a new code.")
-            attempts >= DeviceCode.MAX_ATTEMPTS -> VerifyResult.Error("Too many wrong tries. Request a new code.")
-            !withContext(Dispatchers.Default) { DeviceCode.matches(code, id, salt, hash) } -> {
-                ref.update("attempts", attempts + 1).await()
-                val left = DeviceCode.MAX_ATTEMPTS - attempts - 1
-                VerifyResult.Error(if (left > 0) "That code isn't right. $left ${if (left == 1) "try" else "tries"} left." else "Too many wrong tries. Request a new code.")
-            }
-            else -> {
-                approveSelf(snap.getString("name") ?: defaultName())
-                VerifyResult.Ok
-            }
-        }
+        val r = backend.device("verifyDeviceCode", mapOf("deviceId" to identity.deviceId(), "code" to code))
+        if (r.ok) {
+            identity.setApprovedFor(uid())
+            VerifyResult.Ok
+        } else VerifyResult.Error(r.message ?: "That code isn't right.")
     }
 
-    /** Fallback when no other device is at hand: the caller has just verified a fresh email code. */
-    suspend fun approveAfterEmailCode() = guard {
-        val name = requests().document(identity.deviceId()).get().await().getString("name") ?: defaultName()
-        approveSelf(name)
+    /** Fallback when no other device is at hand: the server checks a fresh email code and adds this device. */
+    suspend fun approveByEmailCode(code: String): VerifyResult = guard {
+        val r = backend.device("approveDeviceByEmail", mapOf("deviceId" to identity.deviceId(), "code" to code))
+        if (r.ok) {
+            identity.setApprovedFor(uid())
+            VerifyResult.Ok
+        } else VerifyResult.Error(r.message ?: "That code isn't right.")
     }
 
-    /** Error screen "Request a new code": clears the old code so an approved device issues a fresh one. */
+    /** Error screen "Request a new code": back to pending so an approved device issues a fresh code. */
     suspend fun resetRequest() = guard {
         requests().document(identity.deviceId()).update(
-            mapOf(
-                "status" to JoinRequest.STATUS_PENDING,
-                "attempts" to 0,
-                "codeHash" to FieldValue.delete(),
-                "codeSalt" to FieldValue.delete(),
-                "codeExpiresAt" to FieldValue.delete(),
-                "requestedAt" to now(),
-            )
+            mapOf("status" to JoinRequest.STATUS_PENDING, "requestedAt" to now(), "codeExpiresAt" to FieldValue.delete())
         ).await()
     }
 
@@ -171,31 +150,20 @@ class DeviceRepository(
     }
 
     /**
-     * Issues a fresh code for [requestId] unless a valid one already exists (e.g. issued by another
-     * of the user's devices). Returns the code to display, or null if one is already active.
+     * Asks the server for a join code for [requestId]; the server checks this phone is an approved
+     * device. Returns the code to display, or null if another device is already showing one.
      */
     suspend fun issueCode(requestId: String): String? = guard {
-        val ref = requests().document(requestId)
-        val code = DeviceCode.newCode()
-        val salt = DeviceCode.newSalt()
-        val hash = withContext(Dispatchers.Default) { DeviceCode.hash(code, requestId, salt) }
-        val issued = db.runTransaction { tx ->
-            val snap = tx.get(ref)
-            val expires = snap.getLong("codeExpiresAt") ?: 0
-            if (!snap.exists() || (snap.getString("codeHash") != null && expires > now())) {
-                false
-            } else {
-                tx.update(ref, mapOf("codeHash" to hash, "codeSalt" to salt, "codeExpiresAt" to now() + DeviceCode.TTL_MS, "attempts" to 0))
-                true
-            }
-        }.await()
-        if (issued) code else null
+        val r = backend.device("issueDeviceCode", mapOf("approverDeviceId" to identity.deviceId(), "deviceId" to requestId))
+        when {
+            r.ok -> r.code
+            r.message != null && "already showing" in r.message -> null
+            else -> throw DeviceException(r.message ?: "Couldn't create a code.")
+        }
     }
 
     suspend fun denyRequest(requestId: String) = guard {
-        requests().document(requestId).update(
-            mapOf("status" to JoinRequest.STATUS_DENIED, "codeHash" to FieldValue.delete(), "codeSalt" to FieldValue.delete())
-        ).await()
+        requests().document(requestId).update(mapOf("status" to JoinRequest.STATUS_DENIED, "codeExpiresAt" to FieldValue.delete())).await()
     }
 
     fun observeDevices(): Flow<List<DeviceInfo>> = callbackFlow {
@@ -219,15 +187,17 @@ class DeviceRepository(
 
     suspend fun setShareSummary(enabled: Boolean) = guard {
         val ref = devices().document(identity.deviceId())
-        if (enabled) ref.update("shareSummary", true).await()
-        else ref.update(mapOf("shareSummary" to false, "summary" to FieldValue.delete())).await()
-        if (enabled) syncThisDevice()
+        if (enabled) {
+            ref.update(mapOf("shareSummary" to true, "lastActive" to now())).await()
+            syncThisDevice()
+        } else {
+            ref.update(mapOf("shareSummary" to false, "summary" to FieldValue.delete(), "lastActive" to now())).await()
+        }
     }
 
     /** Updates "last active", the optional summary and the account's review preferences. */
     suspend fun syncThisDevice() = guard {
-        val id = identity.deviceId()
-        val ref = devices().document(id)
+        val ref = devices().document(identity.deviceId())
         val snap = ref.get().await()
         if (!snap.exists()) return@guard
         val share = snap.getBoolean("shareSummary") ?: true
@@ -249,26 +219,9 @@ class DeviceRepository(
 
     // ---- helpers ----
 
-    private suspend fun approveSelf(name: String) {
-        writeApprovedDevice(name)
-        runCatching { requests().document(identity.deviceId()).delete().await() }
-    }
-
-    private suspend fun writeApprovedDevice(name: String) {
-        val id = identity.deviceId()
-        devices().document(id).set(
-            mapOf(
-                "name" to cleanName(name),
-                "model" to model(),
-                "os" to osVersion(),
-                "platform" to "Android",
-                "addedAt" to now(),
-                "lastActive" to now(),
-                "shareSummary" to true,
-                "summary" to buildSummary(),
-            )
-        ).await()
-        identity.setApprovedFor(uid())
+    private suspend fun serverAction(action: String, fields: Map<String, String>) {
+        val r = backend.device(action, fields)
+        if (!r.ok) throw DeviceException(r.message ?: "Something went wrong. Please try again.")
     }
 
     private suspend fun importAccountPreferences() {
@@ -288,7 +241,7 @@ class DeviceRepository(
             "appCount" to apps.size,
             "highRisk" to apps.count { it.riskLevel == RiskLevel.HIGH },
             "background" to apps.count { it.hasBackgroundAccess },
-            "critical" to apps.sumOf { a -> a.grantedPermissions.count { it.category.sensitivity.name == "CRITICAL" } },
+            "critical" to apps.sumOf { a -> a.grantedPermissions.count { it.category.sensitivity == Sensitivity.CRITICAL } },
             "updatedAt" to now(),
             "topApps" to userApps.sortedByDescending { it.riskScore }.take(MAX_TOP_APPS).map { app ->
                 mapOf(
@@ -338,14 +291,17 @@ class DeviceRepository(
         requestedAt = doc.getLong("requestedAt") ?: 0,
         status = doc.getString("status") ?: JoinRequest.STATUS_PENDING,
         codeExpiresAt = doc.getLong("codeExpiresAt"),
-        attempts = (doc.getLong("attempts") ?: 0).toInt(),
-        hasCode = doc.getString("codeHash") != null,
     )
 
     private suspend fun <T> guard(block: suspend () -> T): T = try {
         block()
     } catch (e: DeviceException) {
         throw e
+    } catch (e: com.google.firebase.firestore.FirebaseFirestoreException) {
+        if (e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+            throw DeviceException("Your session needs to be verified again. Log out and sign in with your email code.")
+        }
+        throw DeviceException("Couldn't reach your account. Check your internet connection and try again.")
     } catch (_: Exception) {
         throw DeviceException("Couldn't reach your account. Check your internet connection and try again.")
     }
@@ -359,7 +315,7 @@ class DeviceRepository(
         return (if (Build.MODEL.startsWith(maker, ignoreCase = true)) Build.MODEL else "$maker ${Build.MODEL}").take(MAX_NAME)
     }
 
-    private fun osVersion() = "Android ${Build.VERSION.RELEASE}"
+    private fun osVersion() = "Android ${Build.VERSION.RELEASE}".take(30)
 
     sealed interface VerifyResult {
         data object Ok : VerifyResult

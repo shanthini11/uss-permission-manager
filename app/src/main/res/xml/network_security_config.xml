@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Security: HTTPS only, and only the phone's built-in certificate authorities are trusted.
+    User-installed CAs (often used to intercept traffic) are ignored, so traffic to Firebase and
+    the verification service can't be read by a proxy the user (or malware) installed.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -32,9 +32,10 @@ android {
 
     buildTypes {
         release {
+            // R8 shrinks and obfuscates the WHOLE app (not just libraries), making reverse
+            // engineering of the release APK harder. Keep rules: src/main/keepRules/rules.keep.
             optimization {
                 enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
         }
     }
