@@ -139,7 +139,7 @@ fun MyDevicesScreen(
                 Button(
                     onClick = {
                         val targets = list.devices.filter { it.id in selected }
-                        identity.run("remove ${if (targets.size == 1) "this device" else "these devices"}") { viewModel.askRemove(targets) }
+                        identity.run("remove ${if (targets.size == 1) "this device" else "these devices"}", alwaysAsk = true) { viewModel.askRemove(targets) }
                     },
                     enabled = selected.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = LocalRiskColors.current.high),
@@ -186,7 +186,7 @@ fun MyDevicesScreen(
             onDismiss = { detailId = null },
             onRemove = {
                 detailId = null
-                identity.run("remove this device") { viewModel.askRemove(listOf(device)) }
+                identity.run("remove this device", alwaysAsk = true) { viewModel.askRemove(listOf(device)) }
             },
             onRefresh = viewModel::refreshThisDevice,
         )

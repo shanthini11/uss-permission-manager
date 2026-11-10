@@ -112,14 +112,20 @@ fun VerifyIdentityDialog(
 }
 
 /**
- * Runs [action] immediately if the user verified recently, otherwise after the password prompt.
+ * Asks for the password before an action.
+ *
+ * - Frequent, low-risk actions (a single permission change) skip the prompt if the password was
+ *   confirmed in the last 2 minutes, so changing several permissions in a row stays quick.
+ * - High-impact actions pass [alwaysAsk] = true and are verified every time: Revoke All, removing
+ *   devices, deleting local data, and backup export/import.
+ *
  * Usage: `val guard = rememberIdentityGuard(); guard.run("apply this change") { ... }` and call `guard.Dialog()`.
  */
 class IdentityGuard internal constructor(private val viewModel: VerifyIdentityViewModel) {
     internal var pending by mutableStateOf<Pair<String, () -> Unit>?>(null)
 
-    fun run(reason: String, action: () -> Unit) {
-        if (viewModel.recentlyVerified()) action() else pending = reason to action
+    fun run(reason: String, alwaysAsk: Boolean = false, action: () -> Unit) {
+        if (!alwaysAsk && viewModel.recentlyVerified()) action() else pending = reason to action
     }
 
     @Composable

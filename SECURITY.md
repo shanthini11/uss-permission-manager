@@ -35,7 +35,7 @@ app verifies the result.
 | SR9 | Explicit feedback after changes | "Permission updated / not updated / revoked / not revoked" results based on re-reading Android's state; one-tap "Change confirmed" banner |
 | SR10 | Don't collect or store personal data unnecessarily | No analytics/ads; history never leaves the phone; Android auto-backup disabled; device summaries optional; see Privacy Information screen |
 | UP8 | Two-factor authentication | Email one-time code after every password sign-in, enforced **server-side** (see 3.2) |
-| UP9 | Verify identity before critical actions | Password re-check before changing permissions, Revoke All, backup export/import, delete local data and removing devices |
+| UP9 | Verify identity before critical actions | Password re-check **every time** before Revoke All, removing devices, Delete Local Data and backup export/import; before a single permission change too, but not repeated within 2 minutes (usability trade-off for frequent, low-risk changes) |
 | UP6 | Multi-device management | My Devices with server-enforced approval of new devices (see 3.3) |
 | UP7 | Backup and delete | Password-encrypted backup files; Delete Local Data with confirmation |
 

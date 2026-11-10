@@ -108,11 +108,11 @@ fun BackupScreen(
             }
         }
         Button(
-            onClick = { identity.run("create a backup") { viewModel.startExport() } },
+            onClick = { identity.run("create a backup", alwaysAsk = true) { viewModel.startExport() } },
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text("Export backup") }
         OutlinedButton(
-            onClick = { identity.run("restore a backup") { openLauncher.launch(arrayOf("application/octet-stream", "*/*")) } },
+            onClick = { identity.run("restore a backup", alwaysAsk = true) { openLauncher.launch(arrayOf("application/octet-stream", "*/*")) } },
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text("Import backup") }
         SectionCard {

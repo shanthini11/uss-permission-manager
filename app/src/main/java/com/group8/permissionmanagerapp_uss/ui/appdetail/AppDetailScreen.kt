@@ -146,7 +146,7 @@ fun AppDetailScreen(
                 isDemo = state.isDemo,
                 onPermissionClick = { sheetCategory = it.category },
                 onOpenSystemSettings = openSettings,
-                onRevokeAll = { identity.run("revoke all of ${app.label}'s permissions") { viewModel.requestRevokeAll() } },
+                onRevokeAll = { identity.run("revoke all of ${app.label}'s permissions", alwaysAsk = true) { viewModel.requestRevokeAll() } },
                 modifier = modifier,
             )
 

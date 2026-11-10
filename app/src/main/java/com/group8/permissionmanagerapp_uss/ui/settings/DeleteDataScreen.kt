@@ -118,7 +118,7 @@ fun DeleteDataScreen(
             Text("This action cannot be undone.", fontWeight = FontWeight.Bold, modifier = Modifier.padding(14.dp))
         }
         Button(
-            onClick = { identity.run("delete local data") { viewModel.askConfirm() } },
+            onClick = { identity.run("delete local data", alwaysAsk = true) { viewModel.askConfirm() } },
             colors = ButtonDefaults.buttonColors(containerColor = risk.high),
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) { Text("Delete local data") }
