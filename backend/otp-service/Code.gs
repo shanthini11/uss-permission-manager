@@ -33,42 +33,141 @@ const RESEND_COOLDOWN_SECONDS = 60;
 const BREVO_DAILY_CAP = 290;         // stay just under Brevo's free 300/day
 const GMAIL_RESERVE = 5;             // leave a few Gmail sends for the owner
 
+// Denial-of-service and brute-force limits.
+const MAX_BODY_BYTES = 8192;           // reject oversized requests before parsing
+const USER_REQUESTS_PER_WINDOW = 40;   // per user, per 10 minutes, across all actions
+const USER_WINDOW_SECONDS = 600;
+const FAILED_CODES_BEFORE_LOCK = 10;   // wrong codes (email or device) before a 1-hour lock
+const LOCK_SECONDS = 3600;
+const BAD_TOKENS_PER_MINUTE = 60;      // above this, invalid requests are refused without calling Google
+const CODES_PER_REQUEST_PER_HOUR = 5;  // join codes an approved device can issue for one request
+const ACTIONS = ['send', 'verify', 'registerFirstDevice', 'issueDeviceCode', 'verifyDeviceCode', 'approveDeviceByEmail'];
+const TOKEN_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
 function doPost(e) {
-  const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
-    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    const user = verifyIdToken_(body.idToken);
-    if (!user) return json_({ ok: false, error: 'unauthenticated' });
-
-    const authTime = tokenAuthTime_(body.idToken);
-
-    if (body.action === 'send') return json_(sendCode_(user));
-    if (body.action === 'verify') {
-      const result = verifyCode_(user, String(body.code || ''));
-      // Mark THIS login session as 2FA-verified (custom claim read by the Firestore rules).
-      if (result.ok && adminConfigured_()) addMfaSession_(user, authTime);
-      return json_(result);
+    // 1. Cheap checks first, so junk floods cost almost nothing (no calls to Google, no locks).
+    const raw = (e && e.postData && e.postData.contents) || '';
+    if (raw.length === 0 || raw.length > MAX_BODY_BYTES) return json_({ ok: false, error: 'bad_request' });
+    let body;
+    try { body = JSON.parse(raw); } catch (err) { return json_({ ok: false, error: 'bad_request' }); }
+    if (ACTIONS.indexOf(body.action) < 0) return json_({ ok: false, error: 'bad_request' });
+    const idToken = body.idToken;
+    if (typeof idToken !== 'string' || idToken.length < 100 || idToken.length > 4096 || !TOKEN_RE.test(idToken)) {
+      return json_({ ok: false, error: 'unauthenticated' });
     }
 
-    // Device actions require a 2FA-verified session.
-    if (!hasMfa_(user, authTime)) return json_({ ok: false, error: 'mfa_required' });
-    const deviceId = String(body.deviceId || '');
-    if (body.action === 'registerFirstDevice') return json_(registerFirstDevice_(user, deviceId, body));
-    if (body.action === 'issueDeviceCode') return json_(issueDeviceCode_(user, String(body.approverDeviceId || ''), deviceId));
-    if (body.action === 'verifyDeviceCode') return json_(verifyDeviceCode_(user, deviceId, String(body.code || '')));
-    if (body.action === 'approveDeviceByEmail') {
-      const check = verifyCode_(user, String(body.code || ''));
-      return json_(check.ok ? createDeviceFromRequest_(user.localId, deviceId) : check);
+    // 2. Circuit breaker: during a flood of invalid tokens, stop calling Google so the quota survives.
+    const cache = CacheService.getScriptCache();
+    const minuteKey = 'badtok:' + Math.floor(Date.now() / 60000);
+    if (Number(cache.get(minuteKey) || '0') > BAD_TOKENS_PER_MINUTE) return json_({ ok: false, error: 'busy' });
+
+    // 3. Verify the Firebase ID token (cached briefly by token hash to avoid repeat lookups).
+    const user = cachedUser_(idToken);
+    if (!user) {
+      cache.put(minuteKey, String(Number(cache.get(minuteKey) || '0') + 1), 120);
+      return json_({ ok: false, error: 'unauthenticated' });
     }
-    return json_({ ok: false, error: 'bad_request' });
+
+    // 4. Per-user rate limit and brute-force lock.
+    const uid = user.localId;
+    const rlKey = 'rl:' + uid;
+    const count = Number(cache.get(rlKey) || '0');
+    if (count >= USER_REQUESTS_PER_WINDOW) return json_({ ok: false, error: 'rate_limited' });
+    cache.put(rlKey, String(count + 1), USER_WINDOW_SECONDS);
+    if (cache.get('locked:' + uid)) return json_({ ok: false, error: 'locked' });
+
+    // 5. Only state-changing work runs under the script lock (held briefly, after auth).
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) return json_({ ok: false, error: 'busy' });
+    try {
+      return json_(handle_(body, user, idToken));
+    } finally {
+      lock.releaseLock();
+    }
   } catch (err) {
     // Never echo internal errors back to the client.
     console.error(err);
     return json_({ ok: false, error: 'server_error' });
-  } finally {
-    lock.releaseLock();
   }
+}
+
+function handle_(body, user, idToken) {
+  {
+    // (block kept for readability: everything below runs under the script lock)
+    const authTime = tokenAuthTime_(idToken);
+
+    if (body.action === 'send') return sendCode_(user);
+    if (body.action === 'verify') {
+      const result = trackFailures_(user.localId, verifyCode_(user, String(body.code || '')));
+      // Mark THIS login session as 2FA-verified (custom claim read by the Firestore rules).
+      if (result.ok && adminConfigured_()) {
+        addMfaSession_(user, authTime);
+        forgetToken_(idToken); // claims changed; don't reuse the cached lookup
+      }
+      return result;
+    }
+
+    // Device actions require a 2FA-verified session.
+    if (!hasMfa_(user, authTime)) return { ok: false, error: 'mfa_required' };
+    const deviceId = String(body.deviceId || '');
+    if (body.action === 'registerFirstDevice') return registerFirstDevice_(user, deviceId, body);
+    if (body.action === 'issueDeviceCode') return issueDeviceCode_(user, String(body.approverDeviceId || ''), deviceId);
+    if (body.action === 'verifyDeviceCode') {
+      return trackFailures_(user.localId, verifyDeviceCode_(user, deviceId, String(body.code || '')));
+    }
+    if (body.action === 'approveDeviceByEmail') {
+      const check = trackFailures_(user.localId, verifyCode_(user, String(body.code || '')));
+      return check.ok ? createDeviceFromRequest_(user.localId, deviceId) : check;
+    }
+    return { ok: false, error: 'bad_request' };
+  }
+}
+
+/**
+ * Brute-force protection across ALL codes: requesting a fresh code resets that code's 5 tries,
+ * so wrong guesses are also counted per account. 10 wrong codes -> locked for an hour.
+ */
+function trackFailures_(uid, result) {
+  const cache = CacheService.getScriptCache();
+  const key = 'fails:' + uid;
+  if (result.ok) {
+    cache.remove(key);
+    return result;
+  }
+  if (result.error === 'invalid_code' || result.error === 'too_many_attempts') {
+    const fails = Number(cache.get(key) || '0') + 1;
+    if (fails >= FAILED_CODES_BEFORE_LOCK) {
+      cache.put('locked:' + uid, '1', LOCK_SECONDS);
+      cache.remove(key);
+      return { ok: false, error: 'locked' };
+    }
+    cache.put(key, String(fails), LOCK_SECONDS);
+  }
+  return result;
+}
+
+/** Token lookups cached for 5 minutes by SHA-256 of the token, so repeated calls don't hit Google. */
+function tokenKey_(idToken) {
+  return 'tok:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken));
+}
+
+function cachedUser_(idToken) {
+  const cache = CacheService.getScriptCache();
+  const key = tokenKey_(idToken);
+  const hit = cache.get(key);
+  if (hit) return JSON.parse(hit);
+  const user = verifyIdToken_(idToken);
+  if (user) {
+    const slim = { localId: user.localId, email: user.email, customAttributes: user.customAttributes || '' };
+    cache.put(key, JSON.stringify(slim), 300);
+    return slim;
+  }
+  return null;
+}
+
+function forgetToken_(idToken) {
+  CacheService.getScriptCache().remove(tokenKey_(idToken));
 }
 
 function sendCode_(user) {
@@ -266,6 +365,11 @@ function issueDeviceCode_(user, approverDeviceId, requestId) {
   const key = 'dev:' + uid + ':' + requestId;
   const current = cache.get(key);
   if (current && JSON.parse(current).e > Date.now()) return { ok: false, error: 'code_active' };
+  // Cap how many codes can be generated for one request (stops endless re-issuing to brute-force).
+  const issuedKey = 'issued:' + uid + ':' + requestId;
+  const issued = Number(cache.get(issuedKey) || '0');
+  if (issued >= CODES_PER_REQUEST_PER_HOUR) return { ok: false, error: 'rate_limited' };
+  cache.put(issuedKey, String(issued + 1), 3600);
 
   const code = randomCode_();
   const expiresAt = Date.now() + CODE_TTL_SECONDS * 1000;

@@ -79,9 +79,14 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         // Only a boolean flag is read from the intent; nothing from it is trusted or forwarded.
-        if (intent?.getBooleanExtra(EXTRA_OPEN_NOTIFICATIONS, false) == true) {
-            openNotificationsRequest.intValue++
+        // Reading any extra unpacks the whole bundle, so a malicious app could send a malformed one
+        // to crash us on launch (local denial of service): treat any unpacking error as "no extra".
+        val open = try {
+            intent?.getBooleanExtra(EXTRA_OPEN_NOTIFICATIONS, false) == true
+        } catch (_: RuntimeException) {
+            false
         }
+        if (open) openNotificationsRequest.intValue++
     }
 
     companion object {

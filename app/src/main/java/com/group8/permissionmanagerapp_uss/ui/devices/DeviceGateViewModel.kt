@@ -84,6 +84,7 @@ class DeviceGateViewModel(
                     // First device on the account: nothing to verify against.
                     devices.registerFirstDevice()
                     _gate.value = DeviceGate.Approved
+                    syncSoon()
                 } else {
                     _gate.value = DeviceGate.Setup(status.otherDevices, devices.defaultName())
                 }
@@ -151,7 +152,15 @@ class DeviceGateViewModel(
 
     fun continueAfterAdded() {
         _gate.value = DeviceGate.Approved
-        viewModelScope.launch { runCatching { devices.syncThisDevice() } }
+        syncSoon()
+    }
+
+    /** A just-added device's record was written moments ago; wait out the 20 s write throttle first. */
+    private fun syncSoon() {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(25_000)
+            runCatching { devices.syncThisDevice(force = true) }
+        }
     }
 
     private fun added() {

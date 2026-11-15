@@ -158,7 +158,13 @@ class HistoryRepository(
     private suspend fun <T> mutate(block: suspend (HistoryFile) -> Pair<HistoryFile, T>): T = mutex.withLock {
         val current = state.value ?: loadLocked()
         val (updated, result) = block(current)
-        val pruned = updated.copy(events = updated.events.filter { now() - it.timestamp <= RETENTION_MS })
+        // 30-day retention, and a hard cap so the file can never grow without bound.
+        val pruned = updated.copy(
+            events = updated.events
+                .filter { now() - it.timestamp <= RETENTION_MS }
+                .sortedBy { it.timestamp }
+                .takeLast(MAX_EVENTS),
+        )
         withContext(Dispatchers.IO) { store.write(json.encodeToString(HistoryFile.serializer(), pruned).toByteArray()) }
         state.value = pruned
         result
@@ -177,6 +183,7 @@ class HistoryRepository(
 
     companion object {
         const val RETENTION_DAYS = 30
+        const val MAX_EVENTS = 5_000
         private const val DAY_MS = 24L * 60 * 60 * 1000
         private const val RETENTION_MS = RETENTION_DAYS * DAY_MS
         private const val MERGE_WINDOW_MS = 10L * 60 * 1000

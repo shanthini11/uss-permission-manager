@@ -100,7 +100,7 @@ class MyDevicesViewModel(private val repo: DeviceRepository) : ViewModel() {
     fun refreshThisDevice() {
         viewModelScope.launch {
             try {
-                repo.syncThisDevice()
+                repo.syncThisDevice(force = true)
                 _message.value = "Summary updated"
             } catch (e: DeviceException) {
                 _message.value = e.message

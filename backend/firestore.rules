@@ -12,6 +12,8 @@ rules_version = '2';
 // 3. Server-enforced device approval: clients can never create a device. Only the verification
 //    service (admin credentials) adds devices, after checking a join code or an email code.
 // 4. Every client write is validated (allowed fields, types, sizes). Anything else is denied.
+// 5. Denial-of-service protection: each document can be rewritten at most once every 20 seconds,
+//    so one account can't burn through the project's free daily write quota.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -24,16 +26,20 @@ service cloud.firestore {
     }
     function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     function nowish(t) { return t is int && t > 0 && t <= request.time.toMillis() + 300000; }
+    // Write throttle: the new timestamp must be at least 20 s after the stored one.
+    function throttled(newTime, oldTime) { return newTime is int && newTime >= oldTime + 20000; }
 
     match /users/{uid} {
       // Review preferences shared between the user's devices.
+      function validPrefs(d) {
+        return d.keys().hasOnly(['notificationsEnabled', 'historyEnabled', 'periodicReview', 'updatedAt'])
+          && d.notificationsEnabled is bool && d.historyEnabled is bool && d.periodicReview is bool
+          && nowish(d.updatedAt);
+      }
       allow read: if verified(uid);
-      allow create, update: if verified(uid)
-        && request.resource.data.keys().hasOnly(['notificationsEnabled', 'historyEnabled', 'periodicReview', 'updatedAt'])
-        && request.resource.data.notificationsEnabled is bool
-        && request.resource.data.historyEnabled is bool
-        && request.resource.data.periodicReview is bool
-        && nowish(request.resource.data.updatedAt);
+      allow create: if verified(uid) && validPrefs(request.resource.data);
+      allow update: if verified(uid) && validPrefs(request.resource.data)
+        && throttled(request.resource.data.updatedAt, resource.data.updatedAt);
       allow delete: if false;
 
       match /devices/{deviceId} {
@@ -55,6 +61,7 @@ service cloud.firestore {
           && request.resource.data.addedAt == resource.data.addedAt
           && str(request.resource.data.os, 0, 30)
           && nowish(request.resource.data.lastActive)
+          && throttled(request.resource.data.lastActive, resource.data.lastActive)
           && request.resource.data.shareSummary is bool
           && (!('summary' in request.resource.data) || validSummary(request.resource.data.summary));
       }
@@ -71,10 +78,17 @@ service cloud.firestore {
         allow create: if verified(uid) && str(deviceId, 36, 36) && validRequest(request.resource.data)
           && request.resource.data.status == 'pending'
           && !('codeExpiresAt' in request.resource.data);
-        // Clients may deny or reset a request, but never set a code expiry themselves.
+        // Clients may deny a request once, or reset it to pending at most every 20 s,
+        // but never set a code expiry themselves.
         allow update: if verified(uid) && validRequest(request.resource.data)
           && (!('codeExpiresAt' in request.resource.data)
-              || request.resource.data.codeExpiresAt == resource.data.codeExpiresAt);
+              || request.resource.data.codeExpiresAt == resource.data.codeExpiresAt)
+          && (
+            (request.resource.data.status == 'denied' && resource.data.status == 'pending'
+              && request.resource.data.requestedAt == resource.data.requestedAt)
+            || (request.resource.data.status == 'pending'
+              && throttled(request.resource.data.requestedAt, resource.data.requestedAt))
+          );
       }
     }
   }

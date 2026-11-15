@@ -103,6 +103,24 @@ app verifies the result.
   timestamps not in the future, immutable identity fields.
 - Search input capped; device names stripped of control characters and length-limited (client and server).
 
+### 3.9 Denial-of-service (DoS) protection
+Scope agreed with the course instructor: single-source DoS is in scope; distributed DoS (DDoS) is not.
+
+| Target | Attack | Protection |
+|---|---|---|
+| Verification service (Apps Script) | Flood of junk requests to burn its daily quota | Cheap checks before any work: body ≤ 8 KB, JSON parse, action allow-list, token format/length. A circuit breaker stops calling Google when > 60 invalid tokens arrive per minute (returns "busy"). |
+| Verification service | Flood from one signed-in account | 40 requests per account per 10 minutes, across all actions |
+| Verification service | Lock contention blocking other users | Token checks happen outside the script lock; the lock is only held for short state changes, with a 10 s timeout returning "busy" |
+| Verification service | Repeated token lookups | Verified tokens cached for 5 minutes by SHA-256 hash |
+| Email codes | Email flooding / quota exhaustion | Codes only go to the account's own address; 60 s cooldown, 5 codes per 15 min per account, daily caps (Brevo 290, Gmail keeps 5 spare) |
+| Email & device codes | Brute force by re-requesting codes (each new code resets its 5 tries) | Wrong codes are also counted per account: 10 wrong codes → verification locked for 1 hour. Max 5 join codes per request per hour |
+| Firestore (free 20k writes/day for the whole project) | One account rewriting documents in a loop to exhaust the quota | Rules allow each document to be rewritten at most once every 20 s; the app syncs at most every 30 s; documents have size limits (≤ 10 top apps, bounded strings) |
+| Firebase Auth | Password guessing, sign-up spam | Firebase's built-in server-side rate limiting and abuse protection |
+| The app itself | Huge or crafted backup file | 5 MB limit, format check, entry cap (10,000) and validation before anything is restored |
+| The app itself | Malformed intent extras from another app to crash it on launch | Intent parsing wrapped; anything unexpected is ignored |
+| The app itself | Unbounded local storage growth | History capped at 30 days and 5,000 entries; search input capped at 60 characters |
+| The app itself | Background work draining battery | Change check runs hourly via WorkManager; the "Tap to return" watcher stops after 3 minutes |
+
 ## 4. Known limitations
 
 | Limitation | Why | Mitigation |
@@ -112,9 +130,32 @@ app verifies the result.
 | Account takeover requires password + email access | 2FA is email-based | Codes are short-lived and rate-limited; device approval adds a further step for new phones |
 | Device approval trusts any approved device of the account | Devices share one account identity | An attacker would already need password + email code; removing a device revokes it |
 | Verification service quota (~390 emails/day) | Free tiers | Daily caps with a clear message; codes only needed once per phone |
-| Local data on a rooted phone | Root bypasses app sandboxing | Sensitive local data is encrypted with a Keystore key |
+| Local data on a rooted phone | Root bypasses app sandboxing | Sensitive local data is encrypted with a Keystore key; Firebase Auth's own sign-in token file is protected only by the sandbox (standard Firebase behaviour) |
+| Firestore write quota under a distributed attack | Per-document throttles can't stop many accounts at once (DDoS, out of scope) | Throttles, size limits; Firebase App Check would help but needs Play Store distribution |
+| Firebase's RecaptchaActivity is exported | Part of the Firebase Auth library | It only handles Firebase's own verification redirects; the unused GenericIdpActivity is removed |
 
-## 5. Testing
+## 5. Security self-audit (15 Nov 2026)
+
+We attacked our own app the way peer testers would. Fixed issues are marked ✅ Fixed.
+
+| # | Area | What we tried | Finding | Status |
+|---|---|---|---|---|
+| 1 | 2FA | Sign in through Firebase's REST API with only the password, then read Firestore | Was possible before server-side enforcement | ✅ Fixed: Firestore requires the server-set `mfaSessions` claim (403 PERMISSION_DENIED) |
+| 2 | Device approval | Create a device document directly from a modified client | Was possible (client-side approval) | ✅ Fixed: rules deny device creation; only the service adds devices |
+| 3 | Brute force | Re-request email codes to reset the 5-try limit | ~2,400 guesses/day possible | ✅ Fixed: 10 wrong codes per account → 1-hour lock |
+| 4 | Brute force | Read the device join-code hash from Firestore and crack it offline | Possible when codes were hashed into Firestore | ✅ Fixed: codes now live only on the server |
+| 5 | DoS | Flood the verification service with junk tokens | Each request cost a call to Google and held a global lock | ✅ Fixed: pre-checks, circuit breaker, token cache, lock only around state changes |
+| 6 | DoS | Rewrite Firestore documents in a loop | Could exhaust the project's free daily writes | ✅ Fixed: 20 s per-document throttle in rules |
+| 7 | DoS | Send the app an intent with a malformed extra | Could crash the app on launch | ✅ Fixed: intent parsing guarded |
+| 8 | Exported components | List all exported components in the merged release manifest | Firebase's unused GenericIdpActivity was exported | ✅ Fixed: removed; the rest are ours (launcher) or system-permission protected |
+| 9 | Backups | Wrong password, edited bytes, renamed photo, 5 MB+ file | All rejected | ✅ Already secure (unit tested) |
+| 10 | Local storage | Inspect files in the app's private storage | History, session and device flags are AES-GCM encrypted; preferences hold no personal data | ✅ Already secure |
+| 11 | Logging / secrets | Search code for logging; search repo and git history for keys | No logging in app code; `google-services.json`, `local.properties` and keys are git-ignored and were never committed | ✅ Already secure |
+| 12 | Identity re-check | Change permissions repeatedly after one password entry | 2-minute grace applied to all actions | ✅ Fixed: high-impact actions always ask |
+| 13 | Screen capture | Screenshot the password/code screens | Blocked in release builds | ✅ Already secure (by design; testers will see a black screenshot) |
+| 14 | Network | Intercept with a user-installed CA | User CAs are not trusted; HTTPS only | ✅ Already secure |
+
+## 6. Testing
 - 41 JVM unit tests: permission parsing and risk scoring, change verification, change detection,
   input validation, email masking, backup encryption (wrong password, tampering, non-backup files).
 - Manual tests on emulator and a real Samsung phone: sign-in + 2FA, permission change flow with

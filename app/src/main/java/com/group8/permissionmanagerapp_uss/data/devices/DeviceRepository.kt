@@ -188,15 +188,21 @@ class DeviceRepository(
     suspend fun setShareSummary(enabled: Boolean) = guard {
         val ref = devices().document(identity.deviceId())
         if (enabled) {
-            ref.update(mapOf("shareSummary" to true, "lastActive" to now())).await()
-            syncThisDevice()
+            // One write containing the flag and the fresh summary (a second write would hit the throttle).
+            ref.update(mapOf("shareSummary" to true, "lastActive" to now(), "summary" to buildSummary())).await()
+            lastSyncAt = now()
         } else {
             ref.update(mapOf("shareSummary" to false, "summary" to FieldValue.delete(), "lastActive" to now())).await()
+            lastSyncAt = now()
         }
     }
 
+    /** Last successful sync; Firestore rules allow one write per document every 20 s (DoS protection). */
+    @Volatile private var lastSyncAt = 0L
+
     /** Updates "last active", the optional summary and the account's review preferences. */
-    suspend fun syncThisDevice() = guard {
+    suspend fun syncThisDevice(force: Boolean = false) = guard {
+        if (!force && now() - lastSyncAt < MIN_SYNC_INTERVAL_MS) return@guard
         val ref = devices().document(identity.deviceId())
         val snap = ref.get().await()
         if (!snap.exists()) return@guard
@@ -204,17 +210,21 @@ class DeviceRepository(
         val update = mutableMapOf<String, Any>("lastActive" to now(), "os" to osVersion())
         if (share) update["summary"] = buildSummary()
         ref.update(update).await()
+        lastSyncAt = now()
 
-        val prefs = preferences.preferences.first()
-        userDoc().set(
-            mapOf(
-                "notificationsEnabled" to prefs.notificationsEnabled,
-                "historyEnabled" to prefs.historyEnabled,
-                "periodicReview" to prefs.periodicReview,
-                "updatedAt" to now(),
-            ),
-            SetOptions.merge(),
-        ).await()
+        // Best effort: another of the user's devices may have just written these (20 s throttle).
+        runCatching {
+            val prefs = preferences.preferences.first()
+            userDoc().set(
+                mapOf(
+                    "notificationsEnabled" to prefs.notificationsEnabled,
+                    "historyEnabled" to prefs.historyEnabled,
+                    "periodicReview" to prefs.periodicReview,
+                    "updatedAt" to now(),
+                ),
+                SetOptions.merge(),
+            ).await()
+        }
     }
 
     // ---- helpers ----
@@ -299,7 +309,8 @@ class DeviceRepository(
         throw e
     } catch (e: com.google.firebase.firestore.FirebaseFirestoreException) {
         if (e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-            throw DeviceException("Your session needs to be verified again. Log out and sign in with your email code.")
+            // Either a write came too soon after the last one (20 s throttle) or the session lost its 2FA mark.
+            throw DeviceException("Couldn't save that right now. Wait a few seconds and try again. If it keeps happening, log out and sign in again.")
         }
         throw DeviceException("Couldn't reach your account. Check your internet connection and try again.")
     } catch (_: Exception) {
@@ -325,5 +336,7 @@ class DeviceRepository(
     companion object {
         const val MAX_NAME = 40
         const val MAX_TOP_APPS = 10
+        /** A little above the rules' 20 s per-document throttle. */
+        const val MIN_SYNC_INTERVAL_MS = 30_000L
     }
 }

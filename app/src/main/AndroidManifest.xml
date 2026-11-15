@@ -46,6 +46,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            Security: Firebase Auth adds this exported activity for Google/Facebook-style sign-in.
+            We only use email + password, so remove it to shrink the exported attack surface.
+        -->
+        <activity
+            android:name="com.google.firebase.auth.internal.GenericIdpActivity"
+            tools:node="remove" />
     </application>
 
 </manifest>
