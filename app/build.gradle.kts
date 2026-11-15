@@ -13,6 +13,11 @@ val localProps = Properties().apply {
 }
 val otpServiceUrl: String = localProps.getProperty("otp.service.url", "")
 
+// Release signing key (never committed: keystore/ and keystore.properties are git-ignored).
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+
 android {
     namespace = "com.group8.permissionmanagerapp_uss"
     compileSdk {
@@ -30,8 +35,20 @@ android {
         buildConfigField("String", "OTP_SERVICE_URL", "\"$otpServiceUrl\"")
     }
 
+    signingConfigs {
+        if (keystoreProps.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             // R8 shrinks and obfuscates the WHOLE app (not just libraries), making reverse
             // engineering of the release APK harder. Keep rules: src/main/keepRules/rules.keep.
             optimization {
