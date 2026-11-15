@@ -9,6 +9,7 @@ import com.google.firebase.firestore.MemoryCacheSettings
 import com.google.firebase.firestore.SetOptions
 import com.group8.permissionmanagerapp_uss.data.auth.AuthRepository
 import com.group8.permissionmanagerapp_uss.data.auth.OtpService
+import com.group8.permissionmanagerapp_uss.data.auth.TextSafety
 import com.group8.permissionmanagerapp_uss.data.auth.await
 import com.group8.permissionmanagerapp_uss.data.model.RiskLevel
 import com.group8.permissionmanagerapp_uss.data.model.Sensitivity
@@ -319,7 +320,8 @@ class DeviceRepository(
 
     fun defaultName(): String = model()
 
-    private fun cleanName(name: String) = name.trim().filter { !it.isISOControl() }.take(MAX_NAME).ifBlank { defaultName() }
+    /** Strips control and bidirectional-override characters so names can't be spoofed (e.g. U+202E). */
+    private fun cleanName(name: String) = TextSafety.clean(name, MAX_NAME).ifBlank { defaultName() }
 
     private fun model(): String {
         val maker = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }

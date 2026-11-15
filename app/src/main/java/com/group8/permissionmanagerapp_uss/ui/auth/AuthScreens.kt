@@ -129,7 +129,7 @@ private fun SignUpScreen(form: AuthFormState, viewModel: AuthViewModel, onSignIn
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
-    val rules = InputValidation.passwordRules(password)
+    val rules = InputValidation.passwordRules(password, email)
 
     AuthScaffold(title = "Create your account") {
         ErrorBanner(form.error)
@@ -148,6 +148,10 @@ private fun SignUpScreen(form: AuthFormState, viewModel: AuthViewModel, onSignIn
             Rule("At least 8 characters", rules.length)
             Rule("Contains a letter", rules.letter)
             Rule("Contains a number", rules.digit)
+            if (password.isNotEmpty()) {
+                Rule("Not a common password", rules.notCommon)
+                Rule("Doesn't contain your email name", rules.notEmailName)
+            }
         }
         PasswordField(confirm, { confirm = it }, label = "Confirm password", onDone = { viewModel.signUp(name, email, password, confirm) })
         if (confirm.isNotEmpty() && confirm != password) {

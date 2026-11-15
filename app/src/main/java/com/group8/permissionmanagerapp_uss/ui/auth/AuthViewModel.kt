@@ -93,7 +93,7 @@ class AuthViewModel(
         val e = email.trim()
         InputValidation.nameError(name)?.let { return fail(it) }
         InputValidation.emailError(e)?.let { return fail(it) }
-        if (!InputValidation.passwordRules(password).allMet) return fail("Your password doesn't meet all the rules below.")
+        if (!InputValidation.passwordRules(password, e).allMet) return fail("Your password doesn't meet all the rules below.")
         if (password != confirm) return fail("The passwords don't match.")
         run {
             auth.signUp(name.trim(), e, password)

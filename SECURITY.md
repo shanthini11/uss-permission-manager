@@ -155,8 +155,44 @@ We attacked our own app the way peer testers would. Fixed issues are marked ✅ 
 | 13 | Screen capture | Screenshot the password/code screens | Blocked in release builds | ✅ Already secure (by design; testers will see a black screenshot) |
 | 14 | Network | Intercept with a user-installed CA | User CAs are not trusted; HTTPS only | ✅ Already secure |
 
-## 6. Testing
-- 41 JVM unit tests: permission parsing and risk scoring, change verification, change detection,
-  input validation, email masking, backup encryption (wrong password, tampering, non-backup files).
+## 6. Threats from the course lectures (5–8) and how we handle them
+
+| Lecture | Threat | Applies to us? | How it's handled | Fully protected? |
+|---|---|---|---|---|
+| 8 | **Buffer overflow** (stack/heap smashing, return-to-libc) | Our code: no. Native libraries inside AndroidX/Firebase: in theory | All our code is **Kotlin on the JVM/ART** (a type-safe, bounds-checked language: the lecture's first listed defence). No C/C++/NDK code of our own. Android provides **DEP/NX, ASLR and stack protectors** for the few library `.so` files | ⚠️ Yes for our code. Bugs inside Google's native libraries or Android itself are outside our control; we rely on the platform's defences and up-to-date libraries |
+| 8 | **SQL injection** | No | The app never builds SQL. Firestore is accessed with a typed SDK (no query strings); WorkManager's internal database uses parameterised queries | ✅ |
+| 8 | **JavaScript injection / XSS** | No | No WebView and no HTML rendering anywhere. All text (including device names and app labels) is shown as plain text by Jetpack Compose | ✅ |
+| 8 | **JSON / command injection** | Possible in principle | Requests are built with a JSON library (never string concatenation); the server uses `JSON.parse`/`JSON.stringify`, no `eval`; device names are length-limited and stripped of control characters on client and server | ✅ |
+| 8 | **Shellcode / malicious code execution** | No | No dynamic code loading (no `DexClassLoader`, no downloaded code, no `exec`); R8 strips unused code | ✅ |
+| 8 | **Credentials in GET requests / plaintext HTTP** | No | Passwords, codes and tokens always go in HTTPS **POST bodies**; cleartext HTTP is disabled | ✅ |
+| 8 | **TLS / CA trust problems** | Partially | Only system CAs are trusted (user-installed interception CAs ignored) | ✅ (certificate pinning not used, as Google rotates certificates) |
+| 8 | **Same-origin policy** | No | No web content or WebView | N/A |
+| 8 | **Display spoofing via Unicode** (e.g. right-to-left override U+202E) | Yes (device names) | Bidirectional control characters stripped from names on client and server | ✅ |
+| 7 | **Reconnaissance / reverse engineering (Apktool)** | Yes | R8 shrinks and obfuscates the release APK; no secrets in the APK (the Firebase config and script URL are public by design and every request is authenticated server-side) | ⚠️ Obfuscation slows analysis but can't prevent it; security never relies on hiding code |
+| 7 | **Password cracking** (dictionary, brute force) | Yes | Firebase stores passwords hashed (scrypt) and rate-limits guesses server-side; sign-up rejects common passwords and passwords containing the email name; email 2FA means a cracked password alone isn't enough | ✅ |
+| 7 | **Port/network scanning** | No | The app runs no server and opens no listening ports | N/A |
+| 7 | **Fault injection / recovery** | Yes | Corrupted or tampered encrypted files are rejected and treated as empty (no crash); atomic file writes; failed Settings changes show "Not updated" with Try again; network failures show clear messages | ✅ |
+| 7 | **Race conditions** | Yes | History writes serialised with a mutex; the server uses a script lock for state changes; join codes issued in a Firestore transaction | ✅ |
+| 7 | **Misconfiguration** | Yes | Firestore rules deny by default; backups disabled; only the launcher activity exported; reviewed in the self-audit | ✅ |
+| 7 | **Incorrect file permissions** | Yes | All app files are in private app storage; backups are written only where the user picks, and are encrypted | ✅ |
+| 6 | **Re-identification from "anonymous" data** | Yes (an app list can fingerprint a person) | Device summaries are optional, limited to 10 apps, and readable only by the account owner; no analytics or data sharing | ✅ |
+| 6 | **Metadata exposure** | Partially | Google (Firebase, Apps Script) and the email provider see that an account exists and when codes are sent | ⚠️ Inherent to using any cloud service; disclosed on the Privacy Information screen |
+| 6 | **Repackaged malicious apps (Zombinder)** | Yes: someone could re-sign our APK with malware | Install only from our official Drive link; the user guide publishes the APK's **SHA-256 checksum** so users can verify the file | ⚠️ Can't be fully prevented outside the Play Store (Play Integrity needs Play distribution) |
+| 5 | **DoS** | Yes | See §3.9 | ✅ single-source DoS / ❌ DDoS out of scope |
+| 5 | **Packet sniffing, TCP hijacking** | Yes | All traffic is TLS (HTTPS) | ✅ |
+| 5 | **Social engineering / phishing** | Yes | Code emails say "Never share this code"; device-join prompts say "If you don't recognise this, Deny and change your password"; plain-language explanations throughout | ⚠️ Education reduces but can't eliminate it |
+| 5 | **Behaviour-based detection (IDS idea)** | Applied in spirit | The app flags suspicious *permission* behaviour: background access, broad access, sudden new grants (red warnings in History and Notifications) | — |
+
+### What we cannot protect against (honestly)
+- **Rooted or compromised phones:** root bypasses Android's sandbox; we limit the damage by encrypting sensitive local data with a Keystore key.
+- **Bugs in Android, Google's libraries or Google's servers** (including any native-code buffer overflows there).
+- **Repackaged copies of our APK** distributed by someone else.
+- **DDoS** from many machines (out of scope per the instructor).
+- **A user who gives away both their password and their email code.**
+
+## 7. Testing
+- 44 JVM unit tests: permission parsing and risk scoring, change verification, change detection,
+  input validation (common-password blocklist, email-name check, Unicode spoofing), email masking,
+  backup encryption (wrong password, tampering, non-backup files).
 - Manual tests on emulator and a real Samsung phone: sign-in + 2FA, permission change flow with
   verification, Revoke All, history/notifications, backup/restore/delete, and multi-device add/approve/remove.

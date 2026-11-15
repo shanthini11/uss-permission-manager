@@ -42,6 +42,27 @@ class InputValidationTest {
     }
 
     @Test
+    fun `common passwords are rejected even if they meet the basic rules`() {
+        val rules = InputValidation.passwordRules("Password123")
+        assertTrue(rules.length && rules.letter && rules.digit)
+        assertFalse(rules.notCommon)
+        assertFalse(rules.allMet)
+    }
+
+    @Test
+    fun `password containing the email name is rejected`() {
+        assertFalse(InputValidation.passwordRules("manojna2026", "manojna@gmail.com").allMet)
+        assertTrue(InputValidation.passwordRules("blue-river-42", "manojna@gmail.com").allMet)
+    }
+
+    @Test
+    fun `bidi override characters are stripped from names`() {
+        // U+202E would make "evil‮gpj.exe" display as "evilexe.jpg"
+        assertEquals("Pixel 8gpj", TextSafety.clean("Pixel 8‮gpj", 40))
+        assertNotNull(InputValidation.nameError("Mano‮jna"))
+    }
+
+    @Test
     fun `email is masked on screen`() {
         assertEquals("ma•••••@gmail.com", maskEmail("manojna@gmail.com"))
         assertEquals("a•••@x.com", maskEmail("a@x.com"))

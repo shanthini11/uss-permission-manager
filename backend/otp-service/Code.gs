@@ -415,8 +415,12 @@ function writeDevice_(uid, deviceId, name, model, os) {
   });
 }
 
+/** Strips control and bidirectional-override characters (name spoofing, e.g. U+202E), then trims. */
 function clean_(v, max) {
-  return String(v || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
+  return String(v || '')
+    .replace(/[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/g, '')
+    .trim()
+    .slice(0, max);
 }
 
 // ---------------------------------------------------------------------------------------------
