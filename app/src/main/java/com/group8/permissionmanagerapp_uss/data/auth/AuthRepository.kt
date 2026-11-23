@@ -1,199 +1,337 @@
 package com.group8.permissionmanagerapp_uss.data.auth
 
+import android.app.KeyguardManager
 import android.content.Context
-import com.google.android.gms.tasks.Task
-import com.google.firebase.FirebaseNetworkException
-import com.google.firebase.FirebaseTooManyRequestsException
-import com.google.firebase.FirebaseApp
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import java.net.HttpURLConnection
-import java.net.URL
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
-import com.google.firebase.auth.FirebaseAuthInvalidUserException
-import com.google.firebase.auth.FirebaseAuthUserCollisionException
-import com.google.firebase.auth.FirebaseAuthWeakPasswordException
-import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.UserProfileChangeRequest
+import com.group8.permissionmanagerapp_uss.data.security.DeviceBoundKey
 import com.group8.permissionmanagerapp_uss.data.security.EncryptedFileStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.File
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import java.security.MessageDigest
+import java.security.SecureRandom
 
 /** A user-facing auth error message (never includes raw exception text). */
 class AuthException(message: String) : Exception(message)
 
+data class AccountInfo(val name: String, val email: String)
+
 /**
- * Firebase email/password sign-in, plus local state for the second factor (email code) and
- * "Verify your identity" re-authentication before sensitive actions (UP8, UP9).
+ * On-device account — no server, no third-party service, no network.
+ *
+ * Sign-in needs BOTH factors:
+ *  1. the password (verified against a PBKDF2 hash), and
+ *  2. a fresh phone unlock (fingerprint/face/screen-lock PIN), proven by decrypting a secret with a
+ *     Keystore key that only works for 30 s after an unlock ([DeviceBoundKey]).
+ * Account data is stored AES-256-GCM encrypted with a separate Keystore key ([EncryptedFileStore]).
  */
-class AuthRepository(context: Context) {
+class AuthRepository(private val context: Context, private val now: () -> Long = System::currentTimeMillis) {
 
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    @Serializable
+    private data class Account(
+        val name: String,
+        val email: String,
+        val salt: String,
+        val hash: String,
+        val iterations: Int,
+        val recoverySalt: String,
+        val recoveryHash: String,
+        val recoveryIterations: Int,
+        /** SHA-256 of the secret that the device-bound key protects (the possession factor). */
+        val unlockSecretHash: String,
+        val createdAt: Long,
+    )
 
-    /** Which signed-in user has passed the email code on this device. Encrypted at rest. */
-    private val sessionStore = EncryptedFileStore(File(context.filesDir, "session.bin"), "pm_session_key")
-    private val _twoFactorUid = MutableStateFlow<String?>(null)
-    val twoFactorUid: StateFlow<String?> = _twoFactorUid.asStateFlow()
+    @Serializable
+    private data class State(
+        val failures: Int = 0,
+        val lockedUntil: Long = 0,
+        val signedIn: Boolean = false,
+        val lastFullSignInAt: Long = 0,
+    )
+
+    @Serializable
+    data class SecurityEvent(val time: Long, val type: String)
+
+    @Serializable
+    private data class EventLog(val events: List<SecurityEvent> = emptyList())
+
+    private val json = Json { ignoreUnknownKeys = true }
+    private val accountStore = EncryptedFileStore(File(context.filesDir, "account.bin"), "pm_account_key")
+    private val stateStore = EncryptedFileStore(File(context.filesDir, "auth_state.bin"), "pm_auth_state_key")
+    private val logStore = EncryptedFileStore(File(context.filesDir, "security_log.bin"), "pm_security_log_key")
+    private val unlockFile = File(context.filesDir, "unlock.bin")
+    private val deviceKey = DeviceBoundKey("pm_device_unlock_key")
+    private val mutex = Mutex()
+
+    private val _signedIn = MutableStateFlow(false)
+    val signedIn: StateFlow<Boolean> = _signedIn.asStateFlow()
 
     @Volatile private var lastReauthAt = 0L
 
-    val currentUser: FirebaseUser? get() = auth.currentUser
+    // ---- status ----
 
-    val userFlow: Flow<FirebaseUser?> = callbackFlow {
-        val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser) }
-        auth.addAuthStateListener(listener)
-        awaitClose { auth.removeAuthStateListener(listener) }
+    /** A secure lock screen (PIN, pattern, password, biometrics) is required for the second factor. */
+    fun isDeviceSecure(): Boolean =
+        (context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure
+
+    suspend fun hasAccount(): Boolean = loadAccount() != null
+
+    suspend fun account(): AccountInfo? = loadAccount()?.let { AccountInfo(it.name, it.email) }
+
+    /** True if the last full sign-in is recent enough that a phone unlock alone reopens the app. */
+    suspend fun quickUnlockAllowed(): Boolean {
+        val s = loadState()
+        return s.signedIn && now() - s.lastFullSignInAt < SESSION_MS
     }
 
-    suspend fun loadSession() = withContext(Dispatchers.IO) {
-        _twoFactorUid.value = sessionStore.read()?.decodeToString()?.takeIf { it.isNotBlank() }
-    }
+    /** Milliseconds until another password attempt is allowed (0 if not locked out). */
+    suspend fun lockoutRemaining(): Long = (loadState().lockedUntil - now()).coerceAtLeast(0)
 
-    suspend fun signUp(name: String, email: String, password: String): FirebaseUser = mapErrors {
-        val user = auth.createUserWithEmailAndPassword(email, password).await().user
-            ?: throw AuthException("Couldn't create the account. Please try again.")
-        user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name).build()).await()
-        user
-    }
-
-    suspend fun signIn(email: String, password: String): FirebaseUser = mapErrors {
-        auth.signInWithEmailAndPassword(email, password).await().user
-            ?: throw AuthException("Email or password is incorrect.")
-    }
-
-    /** Always reports success to the UI, so the screen can't be used to discover which emails have accounts. */
-    suspend fun sendPasswordReset(email: String) {
-        runCatching { auth.sendPasswordResetEmail(email).await() }
-            .onFailure { if (it is FirebaseNetworkException) throw AuthException("No internet connection. Try again.") }
-    }
+    // ---- account creation ----
 
     /**
-     * "Verify your identity": re-check the password before a sensitive action.
-     *
-     * Uses Firebase's password check endpoint instead of re-authenticating the session, because a
-     * re-authentication would start a new login session and invalidate the server-side 2FA marker.
-     * Firebase still rate-limits wrong guesses on the server.
+     * Creates the account. Call right after a successful phone unlock (the device-bound key needs it).
+     * @return the recovery key to show the user once.
      */
-    suspend fun reauthenticate(password: String) {
-        val email = auth.currentUser?.email ?: throw AuthException("You're signed out. Please sign in again.")
-        val apiKey = FirebaseApp.getInstance().options.apiKey
-        val body = buildJsonObject {
-            put("email", email)
-            put("password", password)
-            put("returnSecureToken", false)
-        }.toString()
-        val (status, text) = try {
-            withContext(Dispatchers.IO) {
-                val conn = (URL("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey")
-                    .openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    connectTimeout = 15_000
-                    readTimeout = 15_000
-                    setRequestProperty("Content-Type", "application/json")
-                }
-                conn.outputStream.use { it.write(body.toByteArray()) }
-                val code = conn.responseCode
-                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                (code to (stream?.bufferedReader()?.use { it.readText() } ?: "")).also { conn.disconnect() }
+    suspend fun createAccount(name: String, email: String, password: String): String = mutex.withLock {
+        if (loadAccount() != null) throw AuthException("An account already exists on this phone.")
+        if (!isDeviceSecure()) throw AuthException("Set up a screen lock (PIN, pattern or password) first.")
+        withContext(Dispatchers.Default) {
+            val recovery = RecoveryKey.generate()
+            val pwHash = PasswordHasher.hash(password.toCharArray())
+            val rkHash = PasswordHasher.hash(RecoveryKey.normalize(recovery).toCharArray(), RECOVERY_ITERATIONS)
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            try {
+                deviceKey.ensureExists()
+                unlockFile.writeBytes(deviceKey.encrypt(secret))
+            } catch (_: DeviceBoundKey.NotUnlockedException) {
+                throw AuthException("Please unlock with your fingerprint, face or PIN to continue.")
+            } catch (_: Exception) {
+                throw AuthException("Couldn't set up secure storage. Check that a screen lock is set, then try again.")
             }
-        } catch (_: Exception) {
-            throw AuthException("No internet connection. Try again.")
+            saveAccount(
+                Account(
+                    name = name, email = email.trim().lowercase(),
+                    salt = pwHash.salt, hash = pwHash.hash, iterations = pwHash.iterations,
+                    recoverySalt = rkHash.salt, recoveryHash = rkHash.hash, recoveryIterations = rkHash.iterations,
+                    unlockSecretHash = sha256(secret), createdAt = now(),
+                )
+            )
+            saveState(State(signedIn = true, lastFullSignInAt = now()))
+            logLocked("Account created")
+            _signedIn.value = true
+            recovery
         }
-        when {
-            status in 200..299 -> lastReauthAt = System.currentTimeMillis()
-            "TOO_MANY_ATTEMPTS" in text -> throw AuthException("Too many attempts. Please wait a few minutes and try again.")
-            else -> throw AuthException("That password isn't right.")
+    }
+
+    // ---- sign-in ----
+
+    /** Step 1 of sign-in: email + password (rate-limited). Doesn't sign in yet. */
+    suspend fun checkPassword(email: String, password: String) = mutex.withLock {
+        val acc = loadAccount() ?: throw AuthException("Email or password is incorrect.")
+        enforceLockout()
+        val ok = acc.email.equals(email.trim(), ignoreCase = true) && withContext(Dispatchers.Default) {
+            PasswordHasher.verify(password.toCharArray(), PasswordHasher.Hash(acc.salt, acc.hash, acc.iterations))
         }
+        recordAttempt(ok)
+        if (!ok) throw AuthException(wrongMessage())
     }
 
-    /** Gets a fresh ID token so new custom claims (the server's 2FA marker) take effect immediately. */
-    suspend fun refreshToken() = mapErrors {
-        auth.currentUser?.getIdToken(true)?.await()
-        Unit
+    /** Step 2 of sign-in (and quick unlock): proves a real phone unlock just happened. */
+    suspend fun completeWithDeviceUnlock(fullSignIn: Boolean) = mutex.withLock {
+        val acc = loadAccount() ?: throw AuthException("No account on this phone.")
+        verifyDeviceUnlock(acc)
+        val s = loadState()
+        saveState(s.copy(signedIn = true, lastFullSignInAt = if (fullSignIn) now() else s.lastFullSignInAt))
+        logLocked(if (fullSignIn) "Signed in" else "Unlocked")
+        _signedIn.value = true
     }
 
-    /**
-     * True if the server has marked THIS login session as 2FA-verified (custom claim `mfaSessions`
-     * contains the session's `auth_time`). Firestore rules require the same.
-     */
-    suspend fun hasServerMfa(): Boolean = try {
-        val claims = auth.currentUser?.getIdToken(false)?.await()?.claims.orEmpty()
-        val authTime = (claims["auth_time"] as? Number)?.toLong()
-        val sessions = (claims["mfaSessions"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() }.orEmpty()
-        authTime != null && authTime in sessions
-    } catch (_: Exception) {
-        // Offline: trust the local flag; Firestore will enforce the real check when online.
-        true
+    /** Auto-lock (app in background too long): the session stays, but a phone unlock is needed. */
+    fun lock() {
+        if (_signedIn.value) _signedIn.value = false
     }
 
-    /** Forgets the local "2FA passed" flag so the email code is asked again. */
-    suspend fun clearTwoFactor() = withContext(Dispatchers.IO) {
-        sessionStore.delete()
-        _twoFactorUid.value = null
-    }
-
-    /** True if the password was confirmed in the last [REAUTH_GRACE_MS] (avoids asking repeatedly). */
-    fun recentlyVerified(): Boolean = System.currentTimeMillis() - lastReauthAt < REAUTH_GRACE_MS
-
-    suspend fun idToken(): String = mapErrors {
-        auth.currentUser?.getIdToken(false)?.await()?.token
-            ?: throw AuthException("You're signed out. Please sign in again.")
-    }
-
-    suspend fun markTwoFactorPassed(uid: String) = withContext(Dispatchers.IO) {
-        sessionStore.write(uid.toByteArray())
-        _twoFactorUid.value = uid
-    }
-
-    suspend fun signOut() = withContext(Dispatchers.IO) {
-        auth.signOut()
-        sessionStore.delete()
-        _twoFactorUid.value = null
+    suspend fun signOut() = mutex.withLock {
+        saveState(loadState().copy(signedIn = false))
+        logLocked("Logged out")
+        _signedIn.value = false
         lastReauthAt = 0
     }
 
-    private suspend fun <T> mapErrors(block: suspend () -> T): T = try {
-        block()
-    } catch (e: AuthException) {
-        throw e
-    } catch (_: FirebaseAuthWeakPasswordException) {
-        throw AuthException("That password is too weak. Use at least 8 characters with letters and numbers.")
-    } catch (_: FirebaseAuthUserCollisionException) {
-        throw AuthException("An account with this email already exists. Try signing in instead.")
-    } catch (_: FirebaseAuthInvalidCredentialsException) {
-        throw AuthException("Email or password is incorrect.")
-    } catch (_: FirebaseAuthInvalidUserException) {
-        throw AuthException("Email or password is incorrect.")
-    } catch (_: FirebaseTooManyRequestsException) {
-        throw AuthException("Too many attempts. Please wait a few minutes and try again.")
-    } catch (_: FirebaseNetworkException) {
-        throw AuthException("No internet connection. Try again.")
-    } catch (_: Exception) {
-        throw AuthException("Something went wrong. Please try again.")
+    // ---- verify identity / change password ----
+
+    /** "Verify your identity": password re-check before a sensitive action (shares the lockout). */
+    suspend fun reauthenticate(password: String) = mutex.withLock {
+        val acc = loadAccount() ?: throw AuthException("No account on this phone.")
+        enforceLockout()
+        val ok = withContext(Dispatchers.Default) {
+            PasswordHasher.verify(password.toCharArray(), PasswordHasher.Hash(acc.salt, acc.hash, acc.iterations))
+        }
+        recordAttempt(ok)
+        if (!ok) throw AuthException(wrongMessage(passwordOnly = true))
+        lastReauthAt = now()
     }
+
+    fun recentlyVerified(): Boolean = now() - lastReauthAt < REAUTH_GRACE_MS
+
+    suspend fun changePassword(current: String, newPassword: String) = mutex.withLock {
+        val acc = loadAccount() ?: throw AuthException("No account on this phone.")
+        enforceLockout()
+        val ok = withContext(Dispatchers.Default) {
+            PasswordHasher.verify(current.toCharArray(), PasswordHasher.Hash(acc.salt, acc.hash, acc.iterations))
+        }
+        recordAttempt(ok)
+        if (!ok) throw AuthException(wrongMessage(passwordOnly = true))
+        val h = withContext(Dispatchers.Default) { PasswordHasher.hash(newPassword.toCharArray()) }
+        saveAccount(acc.copy(salt = h.salt, hash = h.hash, iterations = h.iterations))
+        logLocked("Password changed")
+    }
+
+    // ---- recovery ----
+
+    /** Forgot password: recovery key + a fresh phone unlock -> set a new password. */
+    suspend fun recoverWithKey(email: String, recoveryKey: String, newPassword: String) = mutex.withLock {
+        val acc = loadAccount() ?: throw AuthException("No account on this phone.")
+        enforceLockout()
+        val ok = acc.email.equals(email.trim(), ignoreCase = true) && RecoveryKey.isWellFormed(recoveryKey) &&
+            withContext(Dispatchers.Default) {
+                PasswordHasher.verify(
+                    RecoveryKey.normalize(recoveryKey).toCharArray(),
+                    PasswordHasher.Hash(acc.recoverySalt, acc.recoveryHash, acc.recoveryIterations),
+                )
+            }
+        recordAttempt(ok)
+        if (!ok) throw AuthException("Email or recovery key is incorrect.")
+        verifyDeviceUnlock(acc)
+        val h = withContext(Dispatchers.Default) { PasswordHasher.hash(newPassword.toCharArray()) }
+        saveAccount(acc.copy(salt = h.salt, hash = h.hash, iterations = h.iterations))
+        saveState(State(signedIn = true, lastFullSignInAt = now()))
+        logLocked("Password reset with recovery key")
+        _signedIn.value = true
+    }
+
+    /** Lost password AND recovery key: wipe the account (after a phone unlock). Caller wipes app data. */
+    suspend fun resetAccount() = mutex.withLock {
+        val acc = loadAccount()
+        if (acc != null && unlockFile.exists()) {
+            // Must be the phone's owner: needs a fresh unlock. If the key was invalidated (screen lock
+            // removed and re-added), the data is unrecoverable anyway, so allow the reset.
+            try {
+                verifyDeviceUnlock(acc)
+            } catch (e: AuthException) {
+                if (e.message != KEY_INVALIDATED) throw e
+            }
+        }
+        withContext(Dispatchers.IO) {
+            accountStore.delete(); stateStore.delete(); logStore.delete(); unlockFile.delete()
+        }
+        deviceKey.delete()
+        _signedIn.value = false
+        lastReauthAt = 0
+    }
+
+    // ---- security activity log ----
+
+    suspend fun securityEvents(): List<SecurityEvent> = mutex.withLock { loadLog().events.sortedByDescending { it.time } }
+
+    // ---- internals ----
+
+    private fun verifyDeviceUnlock(acc: Account) {
+        val secret = try {
+            deviceKey.decrypt(unlockFile.readBytes())
+        } catch (_: DeviceBoundKey.NotUnlockedException) {
+            throw AuthException("Please unlock with your fingerprint, face or PIN to continue.")
+        } catch (_: DeviceBoundKey.InvalidatedException) {
+            throw AuthException(KEY_INVALIDATED)
+        } catch (_: Exception) {
+            throw AuthException("Couldn't verify the phone unlock. Please try again.")
+        }
+        if (!MessageDigest.isEqual(sha256(secret).toByteArray(), acc.unlockSecretHash.toByteArray())) {
+            throw AuthException("Couldn't verify the phone unlock. Please try again.")
+        }
+    }
+
+    private suspend fun enforceLockout() {
+        val remaining = loadState().lockedUntil - now()
+        if (remaining > 0) {
+            throw AuthException("Too many wrong attempts. Try again in ${formatWait(remaining)}.")
+        }
+    }
+
+    private suspend fun recordAttempt(ok: Boolean) {
+        val s = loadState()
+        if (ok) {
+            saveState(s.copy(failures = 0, lockedUntil = 0))
+        } else {
+            val failures = s.failures + 1
+            val wait = LockoutPolicy.lockoutMillis(failures)
+            saveState(s.copy(failures = failures, lockedUntil = if (wait > 0) now() + wait else 0))
+            logLocked(if (wait > 0) "Wrong password · locked for ${formatWait(wait)}" else "Wrong password")
+        }
+    }
+
+    private suspend fun wrongMessage(passwordOnly: Boolean = false): String {
+        val s = loadState()
+        val base = if (passwordOnly) "That password isn't right." else "Email or password is incorrect."
+        val left = LockoutPolicy.FREE_ATTEMPTS - s.failures
+        return when {
+            s.lockedUntil > now() -> "$base Too many wrong attempts, so it's locked for ${formatWait(s.lockedUntil - now())}."
+            left in 1..2 -> "$base $left ${if (left == 1) "try" else "tries"} left before a short lock."
+            else -> base
+        }
+    }
+
+    private fun formatWait(ms: Long): String {
+        val s = (ms + 999) / 1000
+        return if (s < 60) "$s seconds" else "${(s + 59) / 60} minutes"
+    }
+
+    private suspend fun logLocked(type: String) {
+        val log = loadLog()
+        val events = (log.events + SecurityEvent(now(), type)).takeLast(MAX_EVENTS)
+        withContext(Dispatchers.IO) { logStore.write(json.encodeToString(EventLog.serializer(), EventLog(events)).toByteArray()) }
+    }
+
+    private suspend fun loadLog(): EventLog = withContext(Dispatchers.IO) {
+        logStore.read()?.let { runCatching { json.decodeFromString(EventLog.serializer(), it.decodeToString()) }.getOrNull() }
+    } ?: EventLog()
+
+    private suspend fun loadAccount(): Account? = withContext(Dispatchers.IO) {
+        accountStore.read()?.let { runCatching { json.decodeFromString(Account.serializer(), it.decodeToString()) }.getOrNull() }
+    }
+
+    private suspend fun saveAccount(a: Account) = withContext(Dispatchers.IO) {
+        accountStore.write(json.encodeToString(Account.serializer(), a).toByteArray())
+    }
+
+    private suspend fun loadState(): State = withContext(Dispatchers.IO) {
+        stateStore.read()?.let { runCatching { json.decodeFromString(State.serializer(), it.decodeToString()) }.getOrNull() }
+    } ?: State()
+
+    private suspend fun saveState(s: State) = withContext(Dispatchers.IO) {
+        stateStore.write(json.encodeToString(State.serializer(), s).toByteArray())
+    }
+
+    private fun sha256(b: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     companion object {
         const val REAUTH_GRACE_MS = 2 * 60 * 1000L
-    }
-}
-
-/** Awaits a Play Services Task without pulling in an extra library. */
-@Suppress("UNCHECKED_CAST")
-suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { cont ->
-    addOnCompleteListener { task ->
-        if (task.isSuccessful) cont.resume(task.result as T)
-        else cont.resumeWithException(task.exception ?: IllegalStateException("Task failed"))
+        /** After this long (or after logging out) the password is needed again, not just a phone unlock. */
+        const val SESSION_MS = 12 * 60 * 60 * 1000L
+        /** Leaving the app for this long locks it (phone unlock to reopen). */
+        const val AUTO_LOCK_MS = 5 * 60 * 1000L
+        private const val RECOVERY_ITERATIONS = 50_000
+        private const val MAX_EVENTS = 300
+        const val KEY_INVALIDATED =
+            "Your phone's screen lock was changed, so this account can no longer be unlocked. Reset the app to start again."
     }
 }

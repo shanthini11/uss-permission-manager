@@ -27,11 +27,11 @@ fun PrivacyInfoScreen(modifier: Modifier = Modifier) {
     InfoColumn(modifier, "How your data is collected and used") {
         InfoCard(
             "DATA WE COLLECT",
-            "• Your account: name and email address, stored by Google Firebase so you can sign in.\n" +
+            "• Your account: name, email address (used only as your sign-in name) and a slow, salted hash of your " +
+                "password and recovery key. Never the password itself.\n" +
                 "• App permissions: which apps on this phone have which permissions, read on this phone by Android.\n" +
                 "• Permission history: changes we notice (app name, permission, before and after, time).\n" +
-                "• Your devices: each phone's name, model, Android version and last-active time, plus (unless you turn it " +
-                "off) a short summary: app counts and its 10 riskiest apps with their permission types.\n" +
+                "• Security activity: sign-ins, unlocks, wrong passwords and lockouts on this phone.\n" +
                 "We don't collect your location, contacts, photos, messages or any app's content, and there is no " +
                 "advertising or analytics tracking.",
         )
@@ -39,16 +39,15 @@ fun PrivacyInfoScreen(modifier: Modifier = Modifier) {
             "HOW WE USE YOUR DATA",
             "• To show your apps' permissions, risk levels and history.\n" +
                 "• To alert you when permissions change and remind you to review them weekly (you can turn these off).\n" +
-                "• Your email address is used to send your 6-digit sign-in code. The code is sent by our verification " +
-                "service (Google Apps Script, delivered via Brevo or Gmail) and expires after 5 minutes.",
+                "• Your password and your phone's screen lock (fingerprint, face, PIN or pattern) protect the app. " +
+                "Both are checked on this phone only.",
         )
         InfoCard(
             "LOCAL STORAGE & RETENTION",
-            "Permission history stays on this phone, encrypted with a key held by Android's secure hardware, and is " +
-                "never uploaded. History is kept for the last 30 days. Android's automatic cloud backup is turned off.\n\n" +
-                "Your device list and device summaries are stored in your account on Google Firebase so your phones " +
-                "can see each other. Security rules allow only you to read or change them. Turn off \"Share this " +
-                "phone's summary\" in My Devices to stop sharing a phone's summary.",
+            "Everything stays on this phone. The app has no internet permission, so it cannot send anything " +
+                "anywhere: no servers, no cloud, no third-party services. Your account, history and activity log are " +
+                "encrypted with keys held by Android's secure hardware. History is kept for the last 30 days. " +
+                "Android's automatic cloud backup is turned off.",
         )
         InfoCard(
             "BACKUP & RESTORE",
@@ -58,7 +57,8 @@ fun PrivacyInfoScreen(modifier: Modifier = Modifier) {
         InfoCard(
             "YOUR CONTROL",
             "• Delete Local Data removes history and preferences from this phone at any time.\n" +
-                "• Logging out removes your sign-in from this phone.\n" +
+                "• Logging out ends your session; you need your password and phone unlock to come back.\n" +
+                "• Forgot your password? Use your recovery key, or reset the app to delete everything and start again.\n" +
                 "• We never sell or share your data.",
         )
         InfoCard(
@@ -99,7 +99,7 @@ fun AboutScreen(modifier: Modifier = Modifier) {
         InfoCard(
             "BUILT WITH",
             "Kotlin, Jetpack Compose, Material 3, AndroidX (Navigation, Lifecycle, DataStore, WorkManager), " +
-                "Firebase Authentication and kotlinx.serialization.",
+                "AndroidX Biometric, Android Keystore and kotlinx.serialization. No third-party services; works fully offline.",
         )
     }
 }

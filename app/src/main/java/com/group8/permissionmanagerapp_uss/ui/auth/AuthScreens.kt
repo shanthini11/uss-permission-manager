@@ -1,6 +1,10 @@
 package com.group8.permissionmanagerapp_uss.ui.auth
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +18,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.MarkEmailRead
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.LockReset
+import androidx.compose.material.icons.outlined.ScreenLockPortrait
+import androidx.compose.material.icons.outlined.WifiOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,123 +41,144 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.group8.permissionmanagerapp_uss.AppInfo
 import com.group8.permissionmanagerapp_uss.data.auth.InputValidation
+import com.group8.permissionmanagerapp_uss.data.auth.RecoveryKey
 import com.group8.permissionmanagerapp_uss.ui.common.SecureScreen
 import com.group8.permissionmanagerapp_uss.ui.theme.LocalRiskColors
-import kotlinx.coroutines.delay
 
-private enum class AuthPage { LANDING, SIGN_IN, SIGN_UP, FORGOT }
+private enum class SignedOutPage { SIGN_IN, RECOVER }
+private enum class NoAccountPage { LANDING, SIGN_UP }
 
-/** Everything before the main app: landing, sign in/up, reset, account created, email code. */
+/** Everything before the main app. Runs Android's unlock prompt whenever a step needs it. */
 @Composable
 fun AuthFlow(gate: AuthGate, viewModel: AuthViewModel) {
     val form by viewModel.form.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(form.pendingUnlock) {
+        val pending = form.pendingUnlock ?: return@LaunchedEffect
+        DeviceUnlock.prompt(
+            context = context,
+            title = pending.title,
+            subtitle = "Use your fingerprint, face, or your phone's PIN, pattern or password",
+            onSuccess = viewModel::onUnlockSucceeded,
+            onError = viewModel::onUnlockFailed,
+        )
+    }
+
     when (gate) {
         AuthGate.Loading, is AuthGate.SignedIn ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-
+        AuthGate.ScreenLockMissing -> ScreenLockMissingScreen(viewModel)
+        AuthGate.NoAccount -> NoAccountFlow(form, viewModel)
         AuthGate.SignedOut -> SignedOutFlow(form, viewModel)
-
-        is AuthGate.NeedsCode ->
-            if (gate.justCreated && !form.accountCreatedSeen) AccountCreatedScreen(gate.email, form, viewModel)
-            else CodeScreen(gate.email, form, viewModel)
+        is AuthGate.Locked -> UnlockScreen(gate.name, form, viewModel)
+        is AuthGate.ShowRecoveryKey -> RecoveryKeyScreen(gate, form, viewModel)
     }
 }
 
+/** The second factor is the phone's own unlock, so a secure lock screen is required. */
 @Composable
-private fun SignedOutFlow(form: AuthFormState, viewModel: AuthViewModel) {
-    var page by rememberSaveable { mutableStateOf(AuthPage.LANDING) }
-    val go: (AuthPage) -> Unit = {
-        viewModel.clearError()
-        viewModel.clearResetSent()
-        page = it
+private fun ScreenLockMissingScreen(viewModel: AuthViewModel) {
+    val context = LocalContext.current
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshGate()
+        onPauseOrDispose { }
     }
-    BackHandler(enabled = page != AuthPage.LANDING) { go(AuthPage.LANDING) }
-
-    when (page) {
-        AuthPage.LANDING -> LandingScreen(onSignIn = { go(AuthPage.SIGN_IN) }, onSignUp = { go(AuthPage.SIGN_UP) })
-        AuthPage.SIGN_IN -> SignInScreen(form, viewModel, onForgot = { go(AuthPage.FORGOT) }, onSignUp = { go(AuthPage.SIGN_UP) })
-        AuthPage.SIGN_UP -> SignUpScreen(form, viewModel, onSignIn = { go(AuthPage.SIGN_IN) })
-        AuthPage.FORGOT -> ForgotPasswordScreen(form, viewModel, onBackToSignIn = { go(AuthPage.SIGN_IN) })
-    }
-}
-
-/** Lo-fi "Landing Page": Sign in / Sign up. */
-@Composable
-private fun LandingScreen(onSignIn: () -> Unit, onSignUp: () -> Unit) {
     AuthScaffold(
-        title = "Know which apps can access your data",
-        subtitle = "See every app's permissions in plain language, spot risky access, and keep a private record of changes.",
+        title = "Set up a screen lock first",
+        subtitle = "${AppInfo.NAME} uses your phone's unlock (fingerprint, face or PIN) as a second step when you sign in. " +
+            "Your phone doesn't have a screen lock yet.",
     ) {
-        Spacer(Modifier.height(8.dp))
-        PrimaryButton("Sign in", busy = false, onClick = onSignIn)
-        OutlinedButton(onClick = onSignUp, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(14.dp)) {
-            Text("Create an account", style = MaterialTheme.typography.titleSmall)
+        Icon(Icons.Outlined.ScreenLockPortrait, contentDescription = null, modifier = Modifier.size(56.dp).align(Alignment.CenterHorizontally))
+        Text("1.  Open Security settings\n2.  Choose Screen lock → PIN (or pattern/password)\n3.  Come back here", style = MaterialTheme.typography.bodyMedium)
+        PrimaryButton("Open Security settings", busy = false) {
+            try {
+                context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(Intent(Settings.ACTION_SETTINGS))
+            }
         }
-        CenteredNote("Your permission data stays on this phone. Your account is only used to sign in and protect your settings.")
+        TextButton(onClick = viewModel::refreshGate, modifier = Modifier.fillMaxWidth()) { Text("I've set it up") }
     }
 }
 
-/** Lo-fi "Sign In": email, password with eye toggle, Sign in, Forgot password. */
 @Composable
-private fun SignInScreen(form: AuthFormState, viewModel: AuthViewModel, onForgot: () -> Unit, onSignUp: () -> Unit) {
-    SecureScreen()
-    var email by rememberSaveable { mutableStateOf("") }
-    // Passwords use remember (not rememberSaveable) so they never go into the saved-state bundle.
-    var password by remember { mutableStateOf("") }
-    AuthScaffold(title = "Sign in") {
-        ErrorBanner(form.error)
-        EmailField(email, { email = it })
-        PasswordField(password, { password = it }, onDone = { viewModel.signIn(email, password) })
-        PrimaryButton("Sign in", busy = form.busy) { viewModel.signIn(email, password) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = onForgot) { Text("Forgot password?") }
-            TextButton(onClick = onSignUp) { Text("Create an account") }
+private fun NoAccountFlow(form: AuthFormState, viewModel: AuthViewModel) {
+    var page by rememberSaveable { mutableStateOf(NoAccountPage.LANDING) }
+    BackHandler(enabled = page != NoAccountPage.LANDING) {
+        viewModel.clearError()
+        page = NoAccountPage.LANDING
+    }
+    when (page) {
+        NoAccountPage.LANDING -> AuthScaffold(
+            title = "Know which apps can access your data",
+            subtitle = "See every app's permissions in plain language, spot risky access, and keep a private record of changes.",
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.WifiOff, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Works fully offline. Your account and data never leave this phone: no servers, no internet permission.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            PrimaryButton("Create your account", busy = false) {
+                viewModel.clearError()
+                page = NoAccountPage.SIGN_UP
+            }
         }
-        CenteredNote("After your password, we'll email you a 6-digit code to confirm it's you.")
+        NoAccountPage.SIGN_UP -> SignUpScreen(form, viewModel)
     }
 }
 
-/** Lo-fi "Sign Up", with a live password checklist. */
+/** Create account: name, email (your sign-in name), password with a live checklist. */
 @Composable
-private fun SignUpScreen(form: AuthFormState, viewModel: AuthViewModel, onSignIn: () -> Unit) {
+private fun SignUpScreen(form: AuthFormState, viewModel: AuthViewModel) {
     SecureScreen()
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
+    // Passwords use remember (not rememberSaveable) so they never go into the saved-state bundle.
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     val rules = InputValidation.passwordRules(password, email)
 
-    AuthScaffold(title = "Create your account") {
+    AuthScaffold(
+        title = "Create your account",
+        subtitle = "Stored only on this phone. You'll sign in with this password plus your phone's unlock.",
+    ) {
         ErrorBanner(form.error)
         OutlinedTextField(
             value = name,
             onValueChange = { name = it.take(InputValidation.MAX_NAME) },
             label = { Text("Full name") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, capitalization = KeyboardCapitalization.Words),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
         )
         EmailField(email, { email = it })
         PasswordField(password, { password = it }, imeAction = ImeAction.Next)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Rule("At least 8 characters", rules.length)
+            Rule("At least ${InputValidation.MIN_PASSWORD} characters", rules.length)
             Rule("Contains a letter", rules.letter)
             Rule("Contains a number", rules.digit)
             if (password.isNotEmpty()) {
@@ -158,7 +191,203 @@ private fun SignUpScreen(form: AuthFormState, viewModel: AuthViewModel, onSignIn
             Text("The passwords don't match.", color = LocalRiskColors.current.high, style = MaterialTheme.typography.bodySmall)
         }
         PrimaryButton("Create account", busy = form.busy) { viewModel.signUp(name, email, password, confirm) }
-        TextButton(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) { Text("Already have an account? Sign in") }
+        CenteredNote("Next, confirm with your fingerprint, face or PIN, then save your recovery key.")
+    }
+}
+
+/** Shown once after sign-up: the recovery key, then a check that it was written down correctly. */
+@Composable
+private fun RecoveryKeyScreen(gate: AuthGate.ShowRecoveryKey, form: AuthFormState, viewModel: AuthViewModel) {
+    SecureScreen()
+    var saved by rememberSaveable { mutableStateOf(false) }
+    var confirming by rememberSaveable { mutableStateOf(false) }
+    var a by remember { mutableStateOf("") }
+    var b by remember { mutableStateOf("") }
+    val groups = RecoveryKey.groups(gate.key)
+
+    if (!confirming) {
+        AuthScaffold(
+            title = "Save your recovery key",
+            subtitle = "If you forget your password, this key is the only way to reset it. Nobody else has a copy, not even us.",
+        ) {
+            Icon(Icons.Outlined.Key, contentDescription = null, modifier = Modifier.size(44.dp).align(Alignment.CenterHorizontally))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                groups.chunked(3).forEachIndexed { row, line ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        line.forEachIndexed { i, g ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("${row * 3 + i + 1}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(g, fontFamily = FontFamily.Monospace, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            Text(
+                "Write it on paper and keep it somewhere safe, away from your phone. Screenshots are blocked on this screen for your protection.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(
+                Modifier.fillMaxWidth().toggleable(value = saved, role = Role.Checkbox, onValueChange = { saved = it }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = saved, onCheckedChange = null)
+                Spacer(Modifier.width(8.dp))
+                Text("I've written down my recovery key", style = MaterialTheme.typography.bodyMedium)
+            }
+            PrimaryButton("Continue", busy = false, enabled = saved) { confirming = true }
+        }
+    } else {
+        val (g1, g2) = gate.confirmGroups
+        AuthScaffold(title = "Confirm your recovery key", subtitle = "Type groups ${g1 + 1} and ${g2 + 1} from the key you wrote down.") {
+            ErrorBanner(form.error)
+            GroupField("Group ${g1 + 1}", a) { a = it }
+            GroupField("Group ${g2 + 1}", b) { b = it }
+            PrimaryButton("Confirm", busy = false, enabled = a.length == 4 && b.length == 4) { viewModel.finishRecoveryKey(listOf(a, b)) }
+            TextButton(onClick = { confirming = false; viewModel.clearError() }, modifier = Modifier.fillMaxWidth()) { Text("Show the key again") }
+        }
+    }
+}
+
+@Composable
+private fun GroupField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { v -> onChange(v.uppercase().filter { it.isLetterOrDigit() }.take(4)) },
+        label = { Text(label) },
+        singleLine = true,
+        textStyle = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace, letterSpacing = 4.sp),
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+    )
+}
+
+@Composable
+private fun SignedOutFlow(form: AuthFormState, viewModel: AuthViewModel) {
+    var page by rememberSaveable { mutableStateOf(SignedOutPage.SIGN_IN) }
+    BackHandler(enabled = page != SignedOutPage.SIGN_IN) {
+        viewModel.clearError()
+        page = SignedOutPage.SIGN_IN
+    }
+    when (page) {
+        SignedOutPage.SIGN_IN -> SignInScreen(form, viewModel) {
+            viewModel.clearError()
+            page = SignedOutPage.RECOVER
+        }
+        SignedOutPage.RECOVER -> RecoverScreen(form, viewModel) {
+            viewModel.clearError()
+            page = SignedOutPage.SIGN_IN
+        }
+    }
+}
+
+/** Sign in: password (factor 1), then the phone's unlock (factor 2). */
+@Composable
+private fun SignInScreen(form: AuthFormState, viewModel: AuthViewModel, onForgot: () -> Unit) {
+    SecureScreen()
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    AuthScaffold(title = "Sign in") {
+        ErrorBanner(form.error)
+        EmailField(email, { email = it })
+        PasswordField(password, { password = it }, onDone = { viewModel.signIn(email, password) })
+        PrimaryButton("Sign in", busy = form.busy) { viewModel.signIn(email, password) }
+        TextButton(onClick = onForgot, modifier = Modifier.fillMaxWidth()) { Text("Forgot password?") }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("After your password, unlock with your fingerprint, face or PIN to confirm it's really you.", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** Forgot password: recovery key -> new password. Lost both: reset the app on this phone. */
+@Composable
+private fun RecoverScreen(form: AuthFormState, viewModel: AuthViewModel, onBack: () -> Unit) {
+    SecureScreen()
+    var email by rememberSaveable { mutableStateOf("") }
+    var key by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var confirmReset by rememberSaveable { mutableStateOf(false) }
+    val rules = InputValidation.passwordRules(password, email)
+    val risk = LocalRiskColors.current
+
+    AuthScaffold(title = "Reset your password", subtitle = "Use the 24-character recovery key you saved when you created your account.") {
+        ErrorBanner(form.error)
+        EmailField(email, { email = it })
+        OutlinedTextField(
+            value = key,
+            onValueChange = { key = it.take(40) },
+            label = { Text("Recovery key") },
+            placeholder = { Text("XXXX-XXXX-XXXX-XXXX-XXXX-XXXX") },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+        )
+        PasswordField(password, { password = it }, label = "New password", imeAction = ImeAction.Next)
+        if (password.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Rule("At least ${InputValidation.MIN_PASSWORD} characters, a letter and a number", rules.length && rules.letter && rules.digit)
+                Rule("Not a common password", rules.notCommon)
+            }
+        }
+        PasswordField(confirm, { confirm = it }, label = "Confirm new password")
+        PrimaryButton("Reset password", busy = form.busy) { viewModel.recover(email, key, password, confirm) }
+        TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back to sign in") }
+        TextButton(onClick = { confirmReset = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Lost your recovery key too? Reset the app", color = risk.high)
+        }
+    }
+
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            icon = { Icon(Icons.Outlined.LockReset, contentDescription = null, tint = risk.high) },
+            title = { Text("Reset ${AppInfo.NAME}?") },
+            text = {
+                Text(
+                    "This deletes your account, permission history and settings from this phone so you can start again. " +
+                        "Android's app permissions are not changed. You'll confirm with your phone's unlock.",
+                )
+            },
+            confirmButton = {
+                Button(onClick = { confirmReset = false; viewModel.resetApp() }, colors = ButtonDefaults.buttonColors(containerColor = risk.high)) {
+                    Text("Reset app")
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Reopening the app within 12 hours of signing in: the phone's unlock is enough. */
+@Composable
+private fun UnlockScreen(name: String, form: AuthFormState, viewModel: AuthViewModel) {
+    var asked by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!asked) {
+            asked = true
+            viewModel.quickUnlock()
+        }
+    }
+    AuthScaffold(title = "Welcome back${if (name.isNotBlank()) ", ${name.substringBefore(' ')}" else ""}", subtitle = "${AppInfo.NAME} is locked.") {
+        Icon(Icons.Outlined.Fingerprint, contentDescription = null, modifier = Modifier.size(64.dp).align(Alignment.CenterHorizontally))
+        ErrorBanner(form.error)
+        PrimaryButton("Unlock", busy = form.busy) { viewModel.quickUnlock() }
+        OutlinedButton(onClick = viewModel::usePasswordInstead, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(14.dp)) {
+            Text("Sign in with password instead")
+        }
     }
 }
 
@@ -177,100 +406,6 @@ private fun Rule(text: String, met: Boolean) {
     }
 }
 
-/** Lo-fi "Reset Link Sent". The message is the same whether or not the account exists. */
-@Composable
-private fun ForgotPasswordScreen(form: AuthFormState, viewModel: AuthViewModel, onBackToSignIn: () -> Unit) {
-    var email by rememberSaveable { mutableStateOf("") }
-    val sentTo = form.resetSentTo
-    if (sentTo != null) {
-        AuthScaffold(title = "Check your email") {
-            Icon(Icons.Outlined.MarkEmailRead, contentDescription = null, modifier = Modifier.size(56.dp).align(Alignment.CenterHorizontally))
-            Text(
-                "If an account exists for $sentTo, we've sent a link to reset your password. It may take a minute to arrive; check your spam folder too.",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-            )
-            PrimaryButton("Back to sign in", busy = false, onClick = onBackToSignIn)
-        }
-        return
-    }
-    AuthScaffold(title = "Reset your password", subtitle = "Enter your account email and we'll send you a reset link.") {
-        ErrorBanner(form.error)
-        EmailField(email, { email = it }, imeAction = ImeAction.Done)
-        PrimaryButton("Send reset link", busy = form.busy) { viewModel.sendPasswordReset(email) }
-        TextButton(onClick = onBackToSignIn, modifier = Modifier.fillMaxWidth()) { Text("Back to sign in") }
-    }
-}
-
-/** Lo-fi "Account Created". */
-@Composable
-private fun AccountCreatedScreen(email: String, form: AuthFormState, viewModel: AuthViewModel) {
-    AuthScaffold(title = "Account created") {
-        Icon(
-            Icons.Filled.CheckCircle,
-            contentDescription = null,
-            tint = LocalRiskColors.current.low,
-            modifier = Modifier.size(64.dp).align(Alignment.CenterHorizontally),
-        )
-        Text(
-            "Your ${AppInfo.NAME} account is ready. Next, we'll send a 6-digit code to $email to confirm it's really yours.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-        )
-        ErrorBanner(form.error)
-        PrimaryButton("Continue", busy = form.busy) { viewModel.continueAfterAccountCreated() }
-        TextButton(onClick = viewModel::signOut, modifier = Modifier.fillMaxWidth()) { Text("Sign out") }
-    }
-}
-
-/** Refinement #1: "Verify your email with 2-factor authentication" — 6-digit code, expires in 5 minutes. */
-@Composable
-private fun CodeScreen(email: String, form: AuthFormState, viewModel: AuthViewModel) {
-    SecureScreen()
-    var code by rememberSaveable { mutableStateOf("") }
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1000)
-        }
-    }
-    val secondsLeft = ((form.codeExpiresAt - now) / 1000).coerceAtLeast(0)
-    val resendIn = ((form.resendAvailableAt - now) / 1000).coerceAtLeast(0)
-
-    AuthScaffold(title = "Verify it's you", subtitle = "Enter the 6-digit code we emailed to ${maskEmail(email)}.") {
-        ErrorBanner(form.error)
-        if (!form.codeSent) {
-            Text("Tap below and we'll email you a code.", style = MaterialTheme.typography.bodyMedium)
-            PrimaryButton("Send code", busy = form.busy) { viewModel.resendCode() }
-        } else {
-            OutlinedTextField(
-                value = code,
-                onValueChange = { input -> code = input.filter { it.isDigit() }.take(6) },
-                label = { Text("6-digit code") },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 8.sp, textAlign = TextAlign.Center),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-            )
-            Text(
-                if (secondsLeft > 0) "Code expires in ${secondsLeft / 60}:${"%02d".format(secondsLeft % 60)}"
-                else "This code has expired. Request a new one.",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Medium,
-                color = if (secondsLeft > 0) MaterialTheme.colorScheme.onSurfaceVariant else LocalRiskColors.current.high,
-            )
-            PrimaryButton("Verify", busy = form.busy, enabled = code.length == 6) { viewModel.verifyCode(code) }
-            TextButton(onClick = viewModel::resendCode, enabled = resendIn == 0L && !form.busy, modifier = Modifier.fillMaxWidth()) {
-                Text(if (resendIn > 0) "Resend code in ${resendIn}s" else "Resend code")
-            }
-        }
-        CenteredNote("Can't find it? Check your spam folder. Never share this code with anyone.")
-        TextButton(onClick = viewModel::signOut, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) { Text("Use a different account") }
-    }
-}
-
 /** "manojna@gmail.com" -> "ma•••••@gmail.com" so the full address isn't shown on screen. */
 internal fun maskEmail(email: String): String {
     val at = email.indexOf('@')
@@ -278,3 +413,4 @@ internal fun maskEmail(email: String): String {
     val visible = email.take(minOf(2, at))
     return visible + "•".repeat((at - visible.length).coerceAtLeast(3)) + email.substring(at)
 }
+

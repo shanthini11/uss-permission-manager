@@ -4,14 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.google.services)
 }
-
-// Machine-local config (not committed): the URL of the free 2FA email service (Google Apps Script).
-val localProps = Properties().apply {
-    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
-}
-val otpServiceUrl: String = localProps.getProperty("otp.service.url", "")
 
 // Release signing key (never committed: keystore/ and keystore.properties are git-ignored).
 val keystoreProps = Properties().apply {
@@ -28,11 +21,10 @@ android {
         applicationId = "com.group8.permissionmanagerapp_uss"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "OTP_SERVICE_URL", "\"$otpServiceUrl\"")
     }
 
     signingConfigs {
@@ -80,9 +72,8 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.firestore)
+    // Fingerprint / face / screen-lock prompt (local AndroidX library; no network, no third-party service).
+    implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.compose.material.icons.extended)
     testImplementation(libs.junit)

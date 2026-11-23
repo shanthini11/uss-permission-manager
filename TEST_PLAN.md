@@ -1,6 +1,6 @@
 # Permission Tracker — Manual Test Plan
 
-Group 8 · Usable Security and Privacy · Version 1.0
+Group 8 · Usable Security and Privacy · Version 2.0 (fully offline)
 
 Use this checklist to test every feature by hand. Tick each box, and for anything that fails write
 down **what you did, what you expected, what happened**, plus a screenshot.
@@ -12,7 +12,7 @@ down **what you did, what you expected, what happened**, plus a screenshot.
 You test the **APK** (the same file classmates will get). You don't need to build the code.
 
 ### Option A — Android phone (easiest, most realistic)
-1. Download `PermissionTracker-v1.0.apk` from the shared Drive link onto the phone.
+1. Download `PermissionTracker-v2.0-offline.apk` from the shared Drive link onto the phone. The phone must have a screen lock (PIN/pattern/password).
 2. **Samsung only:** Settings → Security and privacy → **Auto Blocker → Off** (turn it back on after installing).
 3. Open the APK → if asked, allow **Install unknown apps** for Drive/Files → **Install** → **Open**.
 
@@ -20,15 +20,16 @@ You test the **APK** (the same file classmates will get). You don't need to buil
 1. Install **Android Studio** for Mac from <https://developer.android.com/studio> (choose *Apple chip* or *Intel chip* to match your Mac: Apple menu → About This Mac).
 2. Open Android Studio → **More Actions → Virtual Device Manager → Create device** → pick **Pixel 8** (or any phone) → choose the newest system image marked **Recommended** (download it) → **Finish**.
 3. Press **▶** to start the emulator.
-4. **Drag `PermissionTracker-v1.0.apk` from Finder onto the emulator window.** It installs in a few seconds; open it from the app drawer (swipe up).
-5. Mouse = finger: click to tap, click-and-drag to scroll/swipe.
+4. **Set a screen lock:** emulator Settings → Security → Screen lock → **PIN** (e.g. 1234). Optional: add a fingerprint there; to "touch" it use the emulator toolbar **⋯ → Fingerprint → Touch sensor**.
+5. **Drag `PermissionTracker-v2.0-offline.apk` from Finder onto the emulator window.** It installs in a few seconds; open it from the app drawer (swipe up).
+6. Mouse = finger: click to tap, click-and-drag to scroll/swipe.
 
 > Tip: the emulator has very few apps, so turn on **Demo mode** (Settings ⚙ → Demo mode) to test with
 > 12 realistic sample apps. Turn it off to test with the emulator's real apps.
 
 ### Accounts
-- Create **your own account** with an email you can open. Codes may land in **Spam**; mark them "Not spam".
-- For lockout tests (§2.6) use a **second, throwaway account**, because it locks for 1 hour.
+- The account exists **only on the device you create it on**. Any email works (nothing is sent).
+- **Write down the recovery key** shown at sign-up; §2 uses it.
 
 ---
 
@@ -36,33 +37,41 @@ You test the **APK** (the same file classmates will get). You don't need to buil
 
 | # | Steps | Expected | ✓ |
 |---|---|---|---|
-| 1.1 | Open the app | Landing page: shield logo, "Sign in", "Create an account" | ☐ |
-| 1.2 | Create an account → type password `abc` | Checklist shows ✗ for 8 characters / letter / number | ☐ |
+| 1.0 | Remove the device's screen lock, open the app | "Set up a screen lock" screen → Open security settings; after adding a PIN and returning, the landing page appears | ☐ |
+| 1.1 | Open the app | Landing page: shield logo, "Works fully offline" note, "Create an account" | ☐ |
+| 1.2 | Create an account → type password `abc` | Checklist shows ✗ for 10 characters / letter / number | ☐ |
 | 1.3 | Password `Password123` | "Not a common password" ✗; Create account shows an error | ☐ |
 | 1.4 | Password containing your email name (e.g. `riya2026` for riya@…) | "Doesn't contain your email name" ✗ | ☐ |
 | 1.5 | Confirm password different from password | "The passwords don't match." | ☐ |
 | 1.6 | Invalid email (`abc@`) | "Enter a valid email address…" | ☐ |
-| 1.7 | Valid details → Create account | **Account created** screen → Continue | ☐ |
-| 1.8 | Email | 6-digit code arrives within ~1 min (check Spam) | ☐ |
-| 1.9 | Code screen | Email shown partly hidden (e.g. ri•••@gmail.com); countdown from 5:00; "Resend code in 60s" | ☐ |
-| 1.10 | Enter the code | Lands on **Home** | ☐ |
-| 1.11 | Profile 👤 → Log out → confirm | Back to Landing | ☐ |
-| 1.12 | Sign in with a **wrong password** | "Email or password is incorrect." (doesn't say which) | ☐ |
-| 1.13 | Sign in correctly | Asks for a **new email code** → Home | ☐ |
-| 1.14 | Forgot password → enter any email | "If an account exists… we've sent a link" (same message for unknown emails) | ☐ |
-| 1.15 | Use the reset link from the email, then sign in with the new password | Works | ☐ |
+| 1.7 | Valid details → Create account | Phone-unlock prompt (fingerprint/face/PIN) | ☐ |
+| 1.8 | Cancel the unlock prompt | Stays on the form with a message; no account created | ☐ |
+| 1.9 | Create account again → unlock | **Recovery key** screen: 6 groups of 4 characters; Continue disabled until "I've written it down" is ticked | ☐ |
+| 1.10 | Continue → type the two requested groups wrong | "Those don't match…" | ☐ |
+| 1.11 | Type them correctly | Lands on **Home** | ☐ |
+| 1.12 | Profile 👤 → Log out → confirm | Sign-in screen (email partly hidden) | ☐ |
+| 1.13 | Sign in with a **wrong password** | "Email or password is incorrect." (doesn't say which) | ☐ |
+| 1.14 | Correct password | Phone-unlock prompt → Home | ☐ |
+| 1.15 | Correct password, then **cancel** the unlock prompt | Not signed in (password alone isn't enough) | ☐ |
+| 1.16 | Close the app (swipe from Recents), reopen within 12 h | Only the phone unlock is asked → Home | ☐ |
+| 1.17 | Leave the app (Home button) for 5+ minutes, return | App is locked; phone unlock needed | ☐ |
 
 ## 2. Security behaviours
 
 | # | Steps | Expected | ✓ |
 |---|---|---|---|
-| 2.1 | Code screen → enter a wrong code | "That code isn't right. N tries left." | ☐ |
-| 2.2 | Wait 5+ minutes, enter the old code | "That code has expired…" | ☐ |
-| 2.3 | Tap Resend twice quickly | Second time: wait message / button disabled | ☐ |
-| 2.4 | Try to screenshot the sign-in, code or password screens (release APK) | Screenshot is blocked or black (deliberate) | ☐ |
-| 2.5 | Open Recents (□) while on the code screen | App preview is hidden/blank | ☐ |
-| 2.6 | **Throwaway account:** enter 10 wrong codes (use Resend between) | "Too many wrong codes… locked for 1 hour" | ☐ |
-| 2.7 | Lock screen while a permission-change notification is showing | Lock screen shows "Permission Tracker / Open … to review", not app names | ☐ |
+| 2.1 | Log out, enter wrong passwords | After 3 wrong: "2 tries left before a short lock"; after 5: "locked for 30 seconds" | ☐ |
+| 2.2 | Kill the app and reopen during the lock | Still locked (count survives restarts) | ☐ |
+| 2.3 | Another wrong password after the lock ends | Lock doubles (about 1 minute) | ☐ |
+| 2.4 | Try to screenshot the sign-in, recovery-key or password screens (release APK) | Screenshot is blocked or black (deliberate) | ☐ |
+| 2.5 | Open Recents (□) while on the sign-in screen | App preview is hidden/blank | ☐ |
+| 2.6 | Forgot password? → email + **wrong** recovery key | "Email or recovery key is incorrect." | ☐ |
+| 2.7 | Forgot password? → correct key (any case/spacing) + new password → unlock | Signed in; the old password no longer works, the new one does | ☐ |
+| 2.8 | Profile → Change password (wrong current / weak new / correct) | Error / rules error / "Password changed" | ☐ |
+| 2.9 | Profile → Security activity | Lists Account created, Signed in, Wrong password, locks, Password changed with times | ☐ |
+| 2.10 | Forgot password? → Reset the app → confirm → unlock | All data deleted; back to landing page; old account gone | ☐ |
+| 2.11 | Lock screen while a permission-change notification is showing | Lock screen shows "Permission Tracker / Open … to review", not app names | ☐ |
+| 2.12 | (Optional, destructive) Remove the phone's screen lock, re-add it, open the app | "Screen lock was changed… Reset the app" (fails closed) | ☐ |
 
 ## 3. Home dashboard
 
@@ -134,8 +143,8 @@ You test the **APK** (the same file classmates will get). You don't need to buil
 
 | # | Steps | Expected | ✓ |
 |---|---|---|---|
-| 9.1 | Settings ⚙ | Notifications, History, Periodic Review toggles; My Devices, Backup & Restore, Privacy Information, About, Delete Local Data; Demo mode, Show system apps | ☐ |
-| 9.2 | Privacy Information | Clear sections about data, storage, backups, devices, Android limitation | ☐ |
+| 9.1 | Settings ⚙ | Notifications, History, Periodic Review toggles; Backup & Restore, Privacy Information, About, Delete Local Data; Demo mode, Show system apps | ☐ |
+| 9.2 | Privacy Information | Says everything stays on the phone, no internet permission; data, storage, backups, Android limitation | ☐ |
 | 9.3 | About | Version, purpose, research basis, team | ☐ |
 | 9.4 | Demo mode on/off | Yellow banner on/off; sample vs real apps | ☐ |
 
@@ -157,30 +166,20 @@ You test the **APK** (the same file classmates will get). You don't need to buil
 | 11.2 | Delete | **Always** asks password → confirmation warning → "Local data deleted" | ☐ |
 | 11.3 | History tab | Empty; still signed in | ☐ |
 
-## 12. Multi-device (needs two devices: phone + emulator, or two emulators)
+## 12. Moving data between devices (backup file)
 
 | # | Steps | Expected | ✓ |
 |---|---|---|---|
-| 12.1 | Device A: sign in | Goes straight to Home (first device) | ☐ |
-| 12.2 | Settings → My Devices | "This device · Current device" | ☐ |
-| 12.3 | Device B: sign in with the **same account** + email code | "Add this device" → name, Start fresh / Import preferences → Continue → "Verify this device" | ☐ |
-| 12.4 | Device A (app open) | Popup "New device wants to join" with a 6-digit code | ☐ |
-| 12.5 | Device B: wrong code | "That code isn't right. N tries left." | ☐ |
-| 12.6 | Device B: right code | "Device added" → Home | ☐ |
-| 12.7 | Both: My Devices | Both listed; tap the other → summary (apps, high risk, background, riskiest apps) | ☐ |
-| 12.8 | Device A: Deny a new request instead | Device B shows "Couldn't add this device… denied" + Request a new code | ☐ |
-| 12.9 | Device B: "Verify with email" | Email code approves the device | ☐ |
-| 12.10 | Device A: Select devices → tick B → Remove selected | **Always** asks password → warning → "Device removed" | ☐ |
-| 12.11 | Device B: close and reopen the app | "This device was removed" | ☐ |
-| 12.12 | My Devices → toggle "Share this phone's summary" twice quickly | Second time: "Wait a few seconds and try again" (anti-abuse limit) | ☐ |
+| 12.1 | Device A: Export backup, copy the file to device B | File copied | ☐ |
+| 12.2 | Device B: create its own account, Import backup with the backup password | History and preferences restored; Android permissions unchanged | ☐ |
 
 ## 13. General robustness
 
 | # | Steps | Expected | ✓ |
 |---|---|---|---|
 | 13.1 | Rotate the device on several screens | No crash; content kept | ☐ |
-| 13.2 | Turn on airplane mode, open the app | Home/Apps still work (local data) | ☐ |
-| 13.3 | Airplane mode on, try to sign in | Clear "No internet connection" message | ☐ |
+| 13.2 | Turn on airplane mode, use every feature incl. sign-up and sign-in | Everything works (app is fully offline) | ☐ |
+| 13.3 | Phone Settings → Apps → Permission Tracker → Permissions | No network permission listed (only Notifications) | ☐ |
 | 13.4 | Dark mode (phone settings) | Readable in dark theme | ☐ |
 | 13.5 | Large font size (phone settings) | Text still readable, nothing cut off badly | ☐ |
 

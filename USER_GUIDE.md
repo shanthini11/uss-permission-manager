@@ -1,6 +1,6 @@
 # Permission Tracker — User Guide
 
-**Version 1.0** · Group 8 · Usable Security and Privacy (CSE 347/652 | DES306/525) · IIIT-Delhi · Monsoon 2026
+**Version 2.0 (fully offline)** · Group 8 · Usable Security and Privacy (CSE 347/652 | DES306/525) · IIIT-Delhi · Monsoon 2026
 
 Team: Alen Sujoy · Manojna Reddy Kamaram · Shanthini Muralidhar · Shreeya Chawla · Vaishnavi Rai
 
@@ -15,7 +15,8 @@ your camera, microphone, location, photos, contacts, messages and more.
 - **Understand** each permission in plain language: what it can access, why apps ask, what happens if you say no, and the privacy risk.
 - **Act**: choose a safer setting, and the app walks you through applying it and **checks that it worked**.
 - **Track** changes over time in an encrypted 30-day history, with alerts when an app's access changes.
-- **Protect** your account with email two-factor sign-in, password checks before big changes, encrypted backups and device approval.
+- **Protect** your account with two-factor sign-in (password + phone unlock), password checks before big changes and encrypted backups.
+- **Private by design:** the app works fully offline. It has no internet permission, so nothing ever leaves your phone.
 
 > **Why changes finish in Android Settings:** for your security, Android only lets its own Settings app
 > change another app's permissions (otherwise any app could grant itself camera or SMS access).
@@ -25,17 +26,18 @@ your camera, microphone, location, photos, contacts, messages and more.
 
 ## 2. Installing the app
 
-Requires **Android 7.0 or newer**. The file is `PermissionTracker-v1.0.apk`.
+Requires **Android 7.0 or newer** and a **screen lock** (PIN, pattern or password; fingerprint/face optional). The file is `PermissionTracker-v2.0-offline.apk`.
 
 ### 2.1 Check you have the genuine file (recommended)
 Only install the APK from our official link. To make sure the file wasn't modified, compare its SHA-256 checksum:
 
 ```
-SHA-256: 2a4a6406ad431dde899bd3f13588c0d6856a1405f59dd338dc527bf4e5dbb253
+SHA-256: 8ec1d44f0c23236b8812687c281463e591810233a186c23641432021904f23a0
 ```
-The APK is signed by: `CN=Permission Tracker, OU=Group 8 USS, O=IIIT-Delhi, L=New Delhi, C=IN`.
-- Windows (PowerShell): `Get-FileHash PermissionTracker-v1.0.apk -Algorithm SHA256`
-- macOS (Terminal): `shasum -a 256 PermissionTracker-v1.0.apk`
+The APK is signed by: `CN=Permission Tracker, OU=Group 8 USS, O=IIIT-Delhi, L=New Delhi, C=IN`
+(signing certificate SHA-256 `ebcbeb6294ea942ef1dcf2b8cac34a2c3e7e17ea14dfc4e6893c55bd8d7ab716`).
+- Windows (PowerShell): `Get-FileHash PermissionTracker-v2.0-offline.apk -Algorithm SHA256`
+- macOS (Terminal): `shasum -a 256 PermissionTracker-v2.0-offline.apk`
 
 ### 2.2 On an Android phone
 1. Download the APK to your phone (Google Drive, email or USB file transfer).
@@ -46,22 +48,28 @@ The APK is signed by: `CN=Permission Tracker, OU=Group 8 USS, O=IIIT-Delhi, L=Ne
 ### 2.3 On a computer (Windows or Mac) with the Android emulator
 1. Install **Android Studio** from <https://developer.android.com/studio> (on a Mac, pick *Apple chip* or *Intel chip* to match your Mac).
 2. Open it → **More Actions → Virtual Device Manager → Create device** → choose a phone (e.g. Pixel 8) → choose the recommended system image → **Finish** → press **▶**.
-3. **Drag the APK file onto the emulator window.** Open Permission Tracker from the app drawer (swipe up).
-4. Emulators have few apps installed: turn on **Demo mode** (§10) to explore with realistic sample apps.
+3. **Set a screen lock on the emulator** (required for sign-in): emulator Settings → Security (or *Security & privacy*) → **Screen lock → PIN**, e.g. 1234. Optional: add a fingerprint there, then use the emulator's *⋯ → Fingerprint → Touch sensor* to scan it.
+4. **Drag the APK file onto the emulator window.** Open Permission Tracker from the app drawer (swipe up).
+5. Emulators have few apps installed: turn on **Demo mode** (§10) to explore with realistic sample apps.
 
 ---
 
 ## 3. Creating an account and signing in
 
-1. Tap **Create an account**. Enter your name, email and a password.
-   - At least 8 characters, with a letter and a number; not a common password; not containing your email name. A checklist shows which rules are met.
-2. **Account created** → **Continue**. We email you a **6-digit code**.
-   - It expires in **5 minutes**. Can't find it? **Check your Spam folder** and mark it "Not spam".
-   - "Resend code" is available after 60 seconds.
-3. Enter the code → you're in.
+Your account is created **on this phone only**. No email is sent and no internet is needed.
 
-**Every time you sign in** with your password, you'll also enter a fresh email code (two-factor authentication).
-**Forgot your password?** Tap *Forgot password?* on the sign-in screen; we email you a reset link.
+1. No screen lock yet? The app asks you to set one first (**Open security settings**), then come back.
+2. Tap **Create an account**. Enter your name, email (used as your sign-in name) and a password.
+   - At least **10 characters**, with a letter and a number; not a common password; not containing your email name. A checklist shows which rules are met.
+3. **Confirm it's you:** unlock with your fingerprint, face or screen-lock PIN.
+4. **Save your recovery key.** You'll see a 24-character key in 6 groups (e.g. `K7P7-HB8X-PW3S-2T2T-FVZ8-SCPY`). **Write it down on paper** and keep it safe. It's shown **only once**, and it's the only way to reset a forgotten password. Tick *I've written it down*, then type the two groups you're asked for.
+
+**Signing in (two-factor):** your **password**, then your **phone unlock** (fingerprint, face or PIN). Both are checked on the phone.
+- Reopening the app within 12 hours needs only the phone unlock. After **5 minutes in the background** the app locks itself.
+- After **5 wrong passwords**, sign-in is locked for 30 seconds; each further wrong try doubles the wait (up to 15 minutes).
+
+**Forgot your password?** Tap *Forgot password?* → enter your email, your **recovery key** and a new password → unlock your phone.
+**Lost the recovery key too?** On that screen tap **Reset the app**: everything in the app is deleted and you start again. (No one, including us, can recover it.)
 
 ---
 
@@ -118,7 +126,6 @@ Tap any permission on an app page to open its sheet:
 | Permission Notifications | Alerts when an app's permissions change |
 | Permission History | Keep the 30-day encrypted history |
 | Periodic Review | Weekly review reminder |
-| My Devices | Manage the phones on your account (§11) |
 | Backup & Restore | Encrypted backup file of your history and preferences |
 | Privacy Information | Exactly what data is collected and where it's stored |
 | About | Version, purpose and team |
@@ -140,32 +147,36 @@ Settings → **Demo mode**. Shows 12 realistic sample apps (including a delibera
 **Apply setting** and **Revoke all** change the sample apps directly, so you can try every flow without
 leaving the app. Nothing on your phone changes.
 
-## 11. Using more than one device
+## 11. Profile
 
-- The **first phone** you sign in on is added automatically.
-- On **another phone**, after signing in you'll see **Add this device** → **Continue** → **Verify this device**.
-  Open Permission Tracker on a phone that's already connected: it shows a **6-digit code**. Enter it on the new phone.
-  No other phone at hand? Tap **Verify with email**.
-- **My Devices** (Settings or Profile) lists your phones. Tap one to see its permission summary.
-  **Select devices → Remove selected** disconnects a phone (password required); it must be approved again to reconnect.
-- **Share this phone's summary** controls whether this phone's counts and 10 riskiest apps are visible to your other phones.
-- If an unknown device asks to join, tap **Deny** and change your password.
+- Your name and email.
+- **Change password:** enter your current password and a new one (same rules as sign-up).
+- **Security activity:** a log of sign-ins, unlocks, wrong passwords and lockouts on this phone. If you see wrong passwords you didn't type, someone tried to get in.
+- **Log out:** you'll need your password and phone unlock to come back.
+
+**Moving to a new phone:** v2.0 has no cloud sync (by design). Use **Backup & Restore** to move your history and preferences.
 
 ---
 
 ## 12. Security features you may notice
 
-- **Screenshots are blocked** on password, code and backup-password screens, and they're hidden in Recents. This is deliberate (protects against screen-recording malware and shoulder-surfing); screenshots elsewhere work normally.
-- **Password checks** before Revoke all, removing devices, backups and deleting data (every time), and before changing a permission (not repeated within 2 minutes).
-- **Too many wrong codes** locks verification for 1 hour. **Too many requests** shows "Please wait a few minutes".
-- **Saving device settings twice within ~20 seconds** shows "Wait a few seconds and try again" (protection against abuse).
+- **Screenshots are blocked** on password, recovery-key and backup-password screens, and they're hidden in Recents. This is deliberate (protects against screen-recording malware and shoulder-surfing); screenshots elsewhere work normally.
+- **Phone unlock prompt** when signing in, creating the account, recovering or resetting.
+- **Auto-lock** after 5 minutes away from the app.
+- **Password checks** before Revoke all, backups and deleting data (every time), and before changing a permission (not repeated within 2 minutes).
+- **Too many wrong passwords** locks sign-in for a short time that grows with each wrong try (max 15 minutes).
+- **Other apps' floating windows are hidden** while Permission Tracker is open (Android 12+), and taps through overlays are ignored.
 - **Lock-screen notifications** don't show app names.
 
 See `SECURITY.md` in the repository for the full security design.
 
 ## 13. FAQ
 
-**I didn't get the email code.** Check Spam/Promotions. Wait 60 seconds and tap *Resend code*. The service can send about 390 codes a day; if it's reached today's limit you'll see a message.
+**It says "Set up a screen lock".** The second sign-in factor uses your phone's lock. Add a PIN, pattern or password in Android Settings → Security, then return.
+
+**It says my screen lock was changed and I must reset.** If you remove your phone's screen lock, Android destroys the key that protects the account. Reset the app and create a new account (restore a backup if you have one).
+
+**Does the app need internet?** No. It has no internet permission at all.
 
 **Why can't the app change permissions by itself?** Android reserves that for its own Settings app, for security. We guide you there and confirm the result.
 
@@ -175,16 +186,16 @@ See `SECURITY.md` in the repository for the full security design.
 
 **"App not installed".** Uninstall any older copy of Permission Tracker first, then install again.
 
-**The app says "You're offline".** Connect to the internet. Phones already approved keep working offline for local features.
 
 ## 14. Known limitations
 - Permission changes are completed in Android Settings (Android restriction).
 - Other apps' real-time camera/microphone usage isn't available to normal apps.
-- Email delivery depends on free email services (~390 codes/day) and may land in Spam.
+- No multi-device sync (it would need a server); use encrypted backups to move data.
+- A forgotten password **and** lost recovery key can't be recovered; the app must be reset.
 - Not distributed through the Play Store, so Play Integrity checks aren't available; verify the checksum (§2.1).
 
 ## 15. Privacy summary
-Your permission history stays **on your phone, encrypted**. Your account (name, email) is stored by Google Firebase.
-Your device list and optional device summaries are stored in your Firebase account and readable only by you.
-Your email address is used to send sign-in codes. No analytics, no ads, no data selling.
+Everything stays **on your phone, encrypted** with keys held by Android's secure hardware: your account
+(name, email, and only a hash of your password), permission history and security log. The app has **no
+internet permission**: no servers, no cloud, no third-party services, no analytics, no ads, no data selling.
 Full details: **Settings → Privacy Information**.

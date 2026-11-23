@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-        Needed so the Permission Manager can list every installed app and the permissions it holds.
+        Needed so the Permission Tracker can list every installed app and the permissions it holds.
         This is the core purpose of the app (Google Play allows it for permission/device managers).
     -->
     <uses-permission
@@ -12,6 +12,20 @@
 
     <!-- Alerts when an app's permissions change, and the weekly review reminder (asked at runtime). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 12+: lets us hide other apps' overlays while our window is showing (anti-tapjacking). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+
+    <!--
+        Fully offline: strip any network permission a library might merge in, so the app physically
+        cannot send data anywhere. Check with: aapt dump permissions app-release.apk
+    -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+
+    <!-- Fingerprint / face / screen-lock prompt (normal permission, added by androidx.biometric). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!--
         Security: allowBackup is off so permission history and account data are never copied
@@ -46,14 +60,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!--
-            Security: Firebase Auth adds this exported activity for Google/Facebook-style sign-in.
-            We only use email + password, so remove it to shrink the exported attack surface.
-        -->
-        <activity
-            android:name="com.google.firebase.auth.internal.GenericIdpActivity"
-            tools:node="remove" />
     </application>
 
 </manifest>

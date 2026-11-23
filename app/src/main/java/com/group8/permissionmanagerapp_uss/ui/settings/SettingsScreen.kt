@@ -64,7 +64,6 @@ class SettingsViewModel(private val prefs: UserPreferencesRepository) : ViewMode
 /** Lo-fi "Settings": every row from the refined design, plus Demo mode for testers. */
 @Composable
 fun SettingsScreen(
-    onMyDevices: () -> Unit,
     onBackup: () -> Unit,
     onPrivacy: () -> Unit,
     onAbout: () -> Unit,
@@ -104,7 +103,6 @@ fun SettingsScreen(
             checked = prefs.periodicReview,
             onCheckedChange = viewModel::setPeriodicReview,
         )
-        NavRow("My Devices", "Select and manage devices", onMyDevices)
         NavRow("Backup & Restore", "Export or import your preferences and history as an encrypted file", onBackup)
         NavRow("Privacy Information", "How your data is handled", onPrivacy)
         NavRow("About ${AppInfo.NAME}", "Version ${AppInfo.VERSION}", onAbout)

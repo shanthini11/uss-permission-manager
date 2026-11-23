@@ -1,12 +1,13 @@
 package com.group8.permissionmanagerapp_uss.data.auth
 
-/** Client-side input checks for the sign-in forms. Firebase validates again on the server. */
+/** Input checks for the account forms (the repository re-checks before saving). */
 object InputValidation {
     private val EMAIL = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
     const val MAX_EMAIL = 254
     const val MAX_NAME = 50
     const val MAX_PASSWORD = 128
-    const val MIN_PASSWORD = 8
+    /** 10+ because the account is offline: a longer password makes guessing a stolen hash impractical. */
+    const val MIN_PASSWORD = 10
 
     /**
      * Passwords that meet "8+ characters, a letter and a number" but are among the first guesses in

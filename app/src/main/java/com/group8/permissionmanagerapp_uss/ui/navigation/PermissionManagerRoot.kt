@@ -23,8 +23,6 @@ import com.group8.permissionmanagerapp_uss.AppInfo
 import androidx.compose.runtime.LaunchedEffect
 import com.group8.permissionmanagerapp_uss.ui.history.HistoryScreen
 import com.group8.permissionmanagerapp_uss.ui.auth.ProfileScreen
-import com.group8.permissionmanagerapp_uss.ui.devices.JoinApprovalHost
-import com.group8.permissionmanagerapp_uss.ui.devices.MyDevicesScreen
 import com.group8.permissionmanagerapp_uss.ui.history.NotificationsScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -62,9 +60,6 @@ fun PermissionManagerRoot(
 ) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
-
-    // When another phone asks to join this account, show the approval code here, on any screen.
-    JoinApprovalHost()
 
     // Tapping a system notification opens the Notifications screen.
     LaunchedEffect(openNotificationsRequest) {
@@ -169,15 +164,13 @@ fun PermissionManagerRoot(
                 ProfileScreen(
                     name = userName,
                     email = userEmail,
-                    onManageDevices = { navController.navigateSingle(DevicesRoute) },
+                    snackbarHostState = snackbarHostState,
                     onPrivacySettings = { navController.navigateSingle(SettingsRoute) },
                     onSignOut = onSignOut,
                 )
             }
-            composable<DevicesRoute> { MyDevicesScreen(snackbarHostState = snackbarHostState) }
             composable<SettingsRoute> {
                 SettingsScreen(
-                    onMyDevices = { navController.navigateSingle(DevicesRoute) },
                     onBackup = { navController.navigateSingle(BackupRoute) },
                     onPrivacy = { navController.navigateSingle(PrivacyInfoRoute) },
                     onAbout = { navController.navigateSingle(AboutRoute) },
@@ -212,7 +205,6 @@ private fun titleFor(destination: NavDestination?, tab: TopLevelDestination?): S
     destination.isOn(BackgroundRiskRoute) -> "Background risk"
     destination.isOn(NotificationsRoute) -> "Notifications"
     destination.isOn(ProfileRoute) -> "Profile"
-    destination.isOn(DevicesRoute) -> "My Devices"
     destination.isOn(BackupRoute) -> "Backup & Restore"
     destination.isOn(PrivacyInfoRoute) -> "Privacy Information"
     destination.isOn(AboutRoute) -> "About"

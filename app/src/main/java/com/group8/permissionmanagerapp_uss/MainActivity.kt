@@ -1,8 +1,10 @@
 package com.group8.permissionmanagerapp_uss
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.os.SystemClock
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableIntStateOf
@@ -13,17 +15,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.group8.permissionmanagerapp_uss.ui.auth.AuthFlow
 import com.group8.permissionmanagerapp_uss.ui.auth.AuthGate
 import com.group8.permissionmanagerapp_uss.ui.auth.AuthViewModel
-import com.group8.permissionmanagerapp_uss.ui.devices.DeviceGate
-import com.group8.permissionmanagerapp_uss.ui.devices.DeviceGateFlow
-import com.group8.permissionmanagerapp_uss.ui.devices.DeviceGateViewModel
+import com.group8.permissionmanagerapp_uss.data.auth.AuthRepository
 import com.group8.permissionmanagerapp_uss.ui.navigation.PermissionManagerRoot
 import com.group8.permissionmanagerapp_uss.ui.theme.PermissionManagerAppUSSTheme
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (a ComponentActivity) is required by BiometricPrompt for the phone-unlock step.
+class MainActivity : FragmentActivity() {
 
     /** Incremented each time a notification asks us to open the Notifications screen. */
     private val openNotificationsRequest = mutableIntStateOf(0)
+
+    private var authViewModel: AuthViewModel? = null
+
+    /** When the app last went to the background (elapsed realtime, unaffected by clock changes). */
+    private var backgroundedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,29 +37,23 @@ class MainActivity : ComponentActivity() {
         // Tapjacking protection: ignore touches while another app draws over this window
         // (e.g. a fake overlay trying to trick the user into tapping "Apply" or "Remove").
         window.decorView.filterTouchesWhenObscured = true
+        // Android 12+: hide other apps' overlay windows entirely while we're on screen.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setHideOverlayWindows(true)
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             PermissionManagerAppUSSTheme {
-                val authViewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
-                val gate by authViewModel.gate.collectAsStateWithLifecycle()
+                val vm: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
+                authViewModel = vm
+                val gate by vm.gate.collectAsStateWithLifecycle()
                 when (val g = gate) {
-                    // Only fully signed-in users (password + email code) reach the app.
-                    is AuthGate.SignedIn -> {
-                        // Then this phone must be an approved device on the account (refinements #2–#6).
-                        val deviceViewModel: DeviceGateViewModel = viewModel(key = "device-gate-${g.email}", factory = DeviceGateViewModel.Factory)
-                        val deviceGate by deviceViewModel.gate.collectAsStateWithLifecycle()
-                        if (deviceGate == DeviceGate.Approved) {
-                            PermissionManagerRoot(
-                                userName = g.name,
-                                userEmail = g.email,
-                                onSignOut = authViewModel::signOut,
-                                openNotificationsRequest = openNotificationsRequest.intValue,
-                            )
-                        } else {
-                            DeviceGateFlow(deviceGate, deviceViewModel, onSignOut = authViewModel::signOut)
-                        }
-                    }
-                    else -> AuthFlow(g, authViewModel)
+                    // Only users who passed password + phone unlock reach the app.
+                    is AuthGate.SignedIn -> PermissionManagerRoot(
+                        userName = g.name,
+                        userEmail = g.email,
+                        onSignOut = vm::signOut,
+                        openNotificationsRequest = openNotificationsRequest.intValue,
+                    )
+                    else -> AuthFlow(g, vm)
                 }
             }
         }
@@ -64,8 +64,20 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    override fun onStop() {
+        super.onStop()
+        backgroundedAt = SystemClock.elapsedRealtime()
+    }
+
     override fun onStart() {
         super.onStart()
+        // Auto-lock: after 5 minutes in the background, ask for the phone unlock again.
+        if (backgroundedAt != 0L &&
+            SystemClock.elapsedRealtime() - backgroundedAt > AuthRepository.AUTO_LOCK_MS
+        ) {
+            authViewModel?.autoLock()
+        }
+        backgroundedAt = 0L
         // Catch changes made while we were away (e.g. in Android Settings). History and the
         // Notifications screen update; no system notification since the user is here.
         val container = (application as PermissionManagerApp).container

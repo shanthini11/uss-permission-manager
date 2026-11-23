@@ -75,7 +75,7 @@ class VerifyIdentityViewModel(private val auth: AuthRepository) : ViewModel() {
 
 /**
  * Refinement #10 "Verify Your Identity": password re-check before sensitive actions (UP9).
- * Firebase rate-limits wrong passwords on the server.
+ * Wrong passwords count towards the same on-device lockout as sign-in.
  */
 @Composable
 fun VerifyIdentityDialog(
@@ -116,8 +116,8 @@ fun VerifyIdentityDialog(
  *
  * - Frequent, low-risk actions (a single permission change) skip the prompt if the password was
  *   confirmed in the last 2 minutes, so changing several permissions in a row stays quick.
- * - High-impact actions pass [alwaysAsk] = true and are verified every time: Revoke All, removing
- *   devices, deleting local data, and backup export/import.
+ * - High-impact actions pass [alwaysAsk] = true and are verified every time: Revoke All,
+ *   deleting local data, and backup export/import.
  *
  * Usage: `val guard = rememberIdentityGuard(); guard.run("apply this change") { ... }` and call `guard.Dialog()`.
  */

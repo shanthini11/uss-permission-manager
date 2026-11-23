@@ -1,5 +1,5 @@
 # Permission Tracker R8 keep rules.
-# Libraries (Firebase, kotlinx.serialization, AndroidX) ship their own consumer rules.
+# Libraries (kotlinx.serialization, AndroidX) ship their own consumer rules.
 
 # Enum constant names are stored (saved state, navigation arguments) and parsed back with valueOf(),
 # so keep their names stable across builds.
