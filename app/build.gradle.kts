@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     // Fingerprint / face / screen-lock prompt (local AndroidX library; no network, no third-party service).
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.compose.material.icons.extended)
     testImplementation(libs.junit)
