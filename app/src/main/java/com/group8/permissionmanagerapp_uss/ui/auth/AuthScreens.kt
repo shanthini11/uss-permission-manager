@@ -136,7 +136,9 @@ private fun NoAccountFlow(form: AuthFormState, viewModel: AuthViewModel) {
                 Icon(Icons.Outlined.WifiOff, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Works fully offline. Your account and data never leave this phone: no servers, no internet permission.",
+                    "Works fully offline. Your account and data never leave this phone: no servers, no internet permission.\n\n" +
+                        "What the app reads: after you sign in, it reads the list of apps installed on this phone and " +
+                        "which permissions each one has, so it can explain them. It doesn't read any app's content.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -392,7 +394,7 @@ private fun UnlockScreen(name: String, form: AuthFormState, viewModel: AuthViewM
 }
 
 @Composable
-private fun Rule(text: String, met: Boolean) {
+internal fun Rule(text: String, met: Boolean) {
     val risk = LocalRiskColors.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(

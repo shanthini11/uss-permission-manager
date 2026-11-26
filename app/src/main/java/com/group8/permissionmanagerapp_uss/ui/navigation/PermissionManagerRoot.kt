@@ -151,6 +151,7 @@ fun PermissionManagerRoot(
             composable<HistoryRoute> {
                 HistoryScreen(
                     onReviewPermission = { pkg, category -> navController.navigate(AppDetailRoute(pkg, category.name)) },
+                    onOpenSettings = { navController.navigateSingle(SettingsRoute) },
                 )
             }
             composable<NotificationsRoute> {

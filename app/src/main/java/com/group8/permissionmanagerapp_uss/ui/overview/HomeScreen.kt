@@ -174,9 +174,21 @@ private fun CategoriesMiniCard(state: OverviewUiState, onClick: () -> Unit, modi
             if (top.isEmpty()) Text("No access allowed", style = MaterialTheme.typography.bodySmall)
             top.forEach { summary ->
                 Column {
-                    Row {
-                        Text(summary.category.title, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        Text(plural(summary.grantedCount, "app"), style = MaterialTheme.typography.bodySmall)
+                    // Label and count kept apart (gap + ellipsis) so they never run together on small screens.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            summary.category.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        )
+                        Text(
+                            plural(summary.grantedCount, "app"),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                        )
                     }
                     LinearProgressIndicator(
                         progress = { summary.grantedCount.toFloat() / max },

@@ -39,6 +39,8 @@ sealed interface ChangeResult {
         override val category: PermissionCategory,
         override val choice: PermissionChoice,
         val appliedInDemo: Boolean,
+        /** True when Android can't show whether the change happened (not allowed -> Allow once). */
+        val unverified: Boolean = false,
     ) : ChangeResult
 
     data class NotUpdated(
@@ -150,7 +152,7 @@ class AppDetailViewModel(
         savedState[KEY_CATEGORY] = pending.category.name
         savedState[KEY_CHOICE] = pending.choice.name
         savedState[KEY_FROM] = from?.name
-        returnWatcher.watch(packageName, pending.category, pending.choice)
+        returnWatcher.watch(packageName, pending.category, pending.choice, from)
         _uiState.update { it.copy(guide = null) }
     }
 
@@ -190,8 +192,11 @@ class AppDetailViewModel(
         val choice = runCatching { PermissionChoice.valueOf(choiceName) }.getOrNull() ?: return null
         val actual = app.accessFor(category)?.access ?: AccessLevel.NOT_ALLOWED
 
-        return if (choice.matches(actual)) {
-            val from = fromName?.let { runCatching { AccessLevel.valueOf(it) }.getOrNull() }
+        val from = fromName?.let { runCatching { AccessLevel.valueOf(it) }.getOrNull() }
+        return if (choice.isUnverifiableFrom(from) && !actual.isGranted) {
+            // Not allowed -> Allow once looks identical to Android's API: don't claim success.
+            ChangeResult.Updated(app.label, category, choice, appliedInDemo = false, unverified = true)
+        } else if (choice.matches(actual)) {
             history.recordInAppChange(app, category, from, actual, isDemo = false)
             ChangeResult.Updated(app.label, category, choice, appliedInDemo = false)
         } else {

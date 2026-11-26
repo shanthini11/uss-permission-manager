@@ -323,6 +323,13 @@ private fun RiskReasonsCard(app: InstalledApp) {
                 Text("Why it's ${app.riskLevel.label.lowercase()}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
             app.riskReasons.forEach { Text("•  $it", style = MaterialTheme.typography.bodyMedium) }
+            // Explains the two scales so they aren't confused (peer-testing finding).
+            Text(
+                "High / Medium / Low rates the whole app by how much access it has. The Critical / Sensitive / Low " +
+                    "tags on each permission describe how private that type of data is.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (app.isSystemApp) {
                 Text(
                     "This app came with your phone and usually needs this access to work.",

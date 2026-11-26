@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.group8.permissionmanagerapp_uss.data.auth.InputValidation
 import com.group8.permissionmanagerapp_uss.ui.auth.ErrorBanner
 import com.group8.permissionmanagerapp_uss.ui.auth.PasswordField
+import com.group8.permissionmanagerapp_uss.ui.auth.Rule
 import com.group8.permissionmanagerapp_uss.ui.auth.rememberIdentityGuard
 import com.group8.permissionmanagerapp_uss.ui.common.SecureScreen
 import com.group8.permissionmanagerapp_uss.ui.common.TimeFormat
@@ -215,13 +216,18 @@ private fun ChooseBackupPasswordDialog(onDismiss: () -> Unit, onConfirm: (CharAr
                 ErrorBanner(error)
                 PasswordField(password, { password = it }, label = "Backup password")
                 PasswordField(confirm, { confirm = it }, label = "Confirm password")
-                Text("At least 8 characters, with a letter and a number.", style = MaterialTheme.typography.bodySmall)
+                // Live checklist, same rules as the account password (refinement from peer testing).
+                val rules = InputValidation.passwordRules(password)
+                Rule("At least ${InputValidation.MIN_PASSWORD} characters", rules.length)
+                Rule("A letter and a number", rules.letter && rules.digit)
+                Rule("Not a common or simple password", rules.notCommon)
+                Rule("Both passwords match", password.isNotEmpty() && password == confirm)
             }
         },
         confirmButton = {
             Button(onClick = {
                 error = when {
-                    !InputValidation.passwordRules(password).allMet -> "Use at least 8 characters, with a letter and a number."
+                    !InputValidation.passwordRules(password).allMet -> "Your backup password doesn't meet all the rules below."
                     password != confirm -> "The passwords don't match."
                     else -> null
                 }

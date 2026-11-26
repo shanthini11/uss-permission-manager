@@ -18,7 +18,7 @@ enum class PermissionChoice(
     ALLOW_ONCE(
         label = "Allow once",
         tag = "High privacy",
-        description = "The app must ask again every time it wants access.",
+        description = "Android asks you whenever the app wants access. A \"yes\" lasts only until you leave the app.",
         target = AccessLevel.NOT_ALLOWED,
         systemOption = "Ask every time",
     ),
@@ -71,6 +71,13 @@ enum class PermissionChoice(
         target = AccessLevel.NOT_ALLOWED,
         systemOption = "Don't allow",
     );
+
+    /**
+     * True if Android can't tell this choice apart from [from]: "Ask every time" and "Don't allow" both
+     * read as not granted to other apps, so going from not-allowed to Allow once can't be verified.
+     */
+    fun isUnverifiableFrom(from: AccessLevel?): Boolean =
+        this == ALLOW_ONCE && from != null && !from.isGranted
 
     /** True if the app's real access after the change is what the user asked for. */
     fun matches(actual: AccessLevel): Boolean = when (this) {

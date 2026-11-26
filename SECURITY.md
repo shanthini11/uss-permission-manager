@@ -14,7 +14,7 @@ meets them, lists the threats we designed against, and states known limitations 
 | Part | Runs where | Holds |
 |---|---|---|
 | Android app (Kotlin, Jetpack Compose) | The user's phone, nothing else | Account (password hash, recovery-key hash), encrypted history, encrypted security log, preferences |
-| Android Keystore (secure hardware / TEE) | The phone | AES-256 keys that never leave the hardware; one key usable only right after a phone unlock |
+| Android Keystore (secure hardware / TEE on phones that have it; most modern phones do) | The phone | AES-256 keys that never leave the hardware; one key usable only right after a phone unlock |
 
 There is **no server, no cloud, no third-party service and no network access**. The `INTERNET`,
 `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` permissions are explicitly stripped from the merged
@@ -51,10 +51,13 @@ app verifies the result.
 ### 3.1 Account and password storage
 - The account lives only on this phone. The password is **never stored**: only a
   **PBKDF2-HMAC-SHA256 hash, 200,000 iterations, random 16-byte salt**. Comparison is constant-time.
-- Password rules: at least **10 characters**, a letter and a number, at most 128, not on the
-  common-password blocklist, and must not contain the email name.
+- Password rules: at least **10 characters**, a letter and a number, at most 128, not common or
+  simple (blocklist, plus any keyboard run, number sequence or common word such as `qwerty`,
+  `123456`, `password`, and fewer than 5 different characters, e.g. `22222222a`), and must not
+  contain the email name (3+ characters, also checked without dots).
 - The account file is itself **AES-256-GCM encrypted** with an Android Keystore key, so even the
-  hash is unreadable without the phone's secure hardware.
+  hash is unreadable without that key. The Keystore keeps keys in secure hardware where the phone
+  has it; on older phones without it, Android uses a software keystore protected by the sandbox.
 - Error messages are generic ("Email or password is incorrect").
 
 ### 3.2 Two-factor sign-in, fully on-device
@@ -99,8 +102,10 @@ app verifies the result.
   changes, so the owner can spot someone trying to get in. Encrypted, capped at 300 entries.
 
 ### 3.6 Backups
-- Encrypted with a user-chosen password: **PBKDF2-HMAC-SHA256 (120,000 iterations, random salt) →
-  AES-256-GCM** with the header authenticated. A wrong password or edited file is rejected.
+- Encrypted with a user-chosen password: **PBKDF2-HMAC-SHA256 (600,000 iterations, OWASP's current
+  recommendation, random salt) → AES-256-GCM** with the header authenticated. A wrong password or
+  edited file is rejected. Older version-1 backups (120,000 iterations) can still be restored.
+- Backup passwords follow the same rules as the account password, with a live checklist.
 - Imported files are untrusted: 5 MB limit, magic/version check, schema validation, and every entry
   is sanitised before merging. Restoring never changes Android's permissions.
 
@@ -111,8 +116,9 @@ app verifies the result.
 - `taskAffinity=""` against task hijacking (StrandHogg).
 - Tapjacking: `filterTouchesWhenObscured`, and on Android 12+ `setHideOverlayWindows(true)` hides
   other apps' overlays while ours is visible.
-- `FLAG_SECURE` on password, recovery-key and backup-password screens (blocks screenshots, recording
-  and the Recents preview). Debug builds skip it so the emulator view works.
+- `FLAG_SECURE` on **every screen** (blocks screenshots, screen recording and the Recents preview):
+  the permission lists reveal which apps a person uses, so the whole app is treated as sensitive.
+  Debug builds skip it so the emulator view works.
 - Notifications use private visibility; PendingIntents are immutable and explicit.
 - Release builds are shrunk and obfuscated with R8; verbose logging is stripped.
 
@@ -163,7 +169,9 @@ server, there is nothing remote to flood; the remaining targets are on the phone
 | 9 | Exported components | Merged release manifest | Only the launcher activity | ✅ Secure |
 | 10 | Backups | Wrong password, edited bytes, renamed photo, 5 MB+ file | All rejected | ✅ Secure (unit tested) |
 | 11 | DoS | Malformed intent extras | Ignored, no crash | ✅ Secure |
-| 12 | Screen capture | Screenshot the password/recovery-key screens | Blocked in release builds | ✅ Secure (testers see a black screenshot) |
+| 12 | Screen capture | Screenshot any screen, or look at the Recents preview | Blocked on every screen in release builds | ✅ Fixed after peer testing (was password screens only) |
+| 14 | Backup cracking | Offline guessing of a leaked backup file | 600,000 PBKDF2 iterations + 10-character rules | ✅ Fixed after peer testing (was 120,000 / 8 characters) |
+| 15 | Weak passwords | `22222222a`, `abc` in `Secureabc789!`, `first.last` names | Rejected (simple-password and email-name checks) | ✅ Fixed after peer testing (unit tested) |
 | 13 | Secrets in repo | Search repo and history | Release keystore and passwords are git-ignored | ✅ Secure |
 
 ## 6. Threats from the course lectures (5–8) and how we handle them
@@ -178,7 +186,7 @@ server, there is nothing remote to flood; the remaining targets are on the phone
 | 8 | **Credentials over the network / TLS problems** | Nothing is ever sent over a network: the app has no internet permission | ✅ N/A by design |
 | 8 | **Display spoofing via Unicode** (U+202E) | Bidirectional control characters stripped from names | ✅ |
 | 7 | **Reverse engineering (Apktool)** | R8 obfuscation; no secrets in the APK; security relies on Keystore keys, not hidden code | ⚠️ Obfuscation slows analysis but can't prevent it |
-| 7 | **Password cracking** | PBKDF2 200k iterations + salt, file encrypted with a hardware key, common-password blocklist, lockout, and the phone-unlock factor | ✅ |
+| 7 | **Password cracking** | PBKDF2 200k iterations + salt (600k for backups), file encrypted with a Keystore key, common/simple-password checks, lockout, and the phone-unlock factor | ✅ |
 | 7 | **Port/network scanning** | No server, no listening ports, no network permission | ✅ N/A |
 | 7 | **Fault injection** | Corrupted/tampered encrypted files rejected without crashing; atomic writes; failed Settings changes show "Not updated" | ✅ |
 | 7 | **Race conditions** | Account and history writes serialised with mutexes | ✅ |
@@ -197,8 +205,9 @@ server, there is nothing remote to flood; the remaining targets are on the phone
 
 ## 7. Testing
 - JVM unit tests: permission parsing and risk scoring, change verification, change detection,
-  input validation (10-character minimum, common-password blocklist, email-name check, Unicode
-  spoofing), password hashing (salting, verification), lockout schedule, recovery-key generation and
+  input validation (10-character minimum, common and simple passwords, short and dotted email names,
+  apostrophe emails, Unicode spoofing), Android 9 background location, audio-only media access,
+  unverifiable "Allow once" changes, password hashing (salting, verification), lockout schedule, recovery-key generation and
   normalisation, backup encryption (wrong password, tampering, non-backup files).
 - Manual tests on emulator and a real phone: sign-up with recovery key, sign-in with password +
   unlock, auto-lock, lockout, recovery, reset, permission change flow, Revoke All, history,

@@ -13,6 +13,10 @@ object PermissionResolver {
     private const val READ_MEDIA_VIDEO = "android.permission.READ_MEDIA_VIDEO"
     private const val READ_MEDIA_SELECTED = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
     private const val READ_EXTERNAL_STORAGE = "android.permission.READ_EXTERNAL_STORAGE"
+    private const val READ_MEDIA_AUDIO = "android.permission.READ_MEDIA_AUDIO"
+
+    /** Android 10 (API 29) introduced separate background location; before it, any grant included background. */
+    const val SDK_SEPARATE_BACKGROUND_LOCATION = 29
 
     /** Categories where a foreground grant means "only while using the app". */
     private val foregroundOnlyCategories = setOf(
@@ -24,9 +28,13 @@ object PermissionResolver {
 
     /**
      * @param requested map of every permission the app requested -> whether it is currently granted.
+     * @param sdkInt the phone's Android API level (affects how location grants are read).
      * @return one [AppPermission] per tracked category the app requested, most sensitive first.
      */
-    fun resolve(requested: Map<String, Boolean>): List<AppPermission> {
+    fun resolve(
+        requested: Map<String, Boolean>,
+        sdkInt: Int = SDK_SEPARATE_BACKGROUND_LOCATION,
+    ): List<AppPermission> {
         val byCategory = requested.entries
             .mapNotNull { (perm, granted) ->
                 PermissionCategory.forAndroidPermission(perm)?.let { Triple(it, perm, granted) }
@@ -35,7 +43,7 @@ object PermissionResolver {
 
         return byCategory.map { (category, perms) ->
             val grants = perms.toMap()
-            val (access, detail) = accessFor(category, grants)
+            val (access, detail) = accessFor(category, grants, sdkInt)
             AppPermission(
                 category = category,
                 access = access,
@@ -52,6 +60,7 @@ object PermissionResolver {
     private fun accessFor(
         category: PermissionCategory,
         grants: Map<String, Boolean>,
+        sdkInt: Int,
     ): Pair<AccessLevel, String?> {
         val bg = category.backgroundPermission
         val foregroundGranted = grants.any { (perm, granted) -> granted && perm != bg }
@@ -64,6 +73,10 @@ object PermissionResolver {
                 val precise = grants[FINE_LOCATION] == true
                 val approximate = !precise && grants[COARSE_LOCATION] == true
                 when {
+                    // Android 9 and older have no "while using" option: a location grant also works in the background.
+                    sdkInt < SDK_SEPARATE_BACKGROUND_LOCATION -> AccessLevel.ALWAYS to
+                        (if (precise) "Precise location" else "Approximate location") +
+                        ", even when the app is closed (Android 9 and older can't limit this)"
                     backgroundGranted -> AccessLevel.ALWAYS to
                         if (precise) "Precise location, even when the app is closed"
                         else "Approximate location, even when the app is closed"
@@ -77,8 +90,12 @@ object PermissionResolver {
                     grants[READ_MEDIA_VIDEO] == true ||
                     grants[READ_EXTERNAL_STORAGE] == true
                 val selectedOnly = !fullMedia && grants[READ_MEDIA_SELECTED] == true
-                if (selectedOnly) AccessLevel.LIMITED to "Selected photos and videos only"
-                else AccessLevel.ALLOWED to "All photos, videos and files"
+                val audioOnly = !fullMedia && !selectedOnly && grants[READ_MEDIA_AUDIO] == true
+                when {
+                    selectedOnly -> AccessLevel.LIMITED to "Selected photos and videos only"
+                    audioOnly -> AccessLevel.ALLOWED to "Music and audio files only (no photos or videos)"
+                    else -> AccessLevel.ALLOWED to "All photos, videos and files"
+                }
             }
 
             else -> when {

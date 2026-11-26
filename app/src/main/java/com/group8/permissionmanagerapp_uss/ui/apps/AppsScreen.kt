@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -108,8 +109,8 @@ fun AppsContent(
         }
 
         item {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
+            // Wraps onto a second line so every filter label is fully visible (no cut-off chips).
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 AppFilter.entries.forEach { f ->

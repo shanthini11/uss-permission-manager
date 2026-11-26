@@ -46,7 +46,8 @@ fun PrivacyInfoScreen(modifier: Modifier = Modifier) {
             "LOCAL STORAGE & RETENTION",
             "Everything stays on this phone. The app has no internet permission, so it cannot send anything " +
                 "anywhere: no servers, no cloud, no third-party services. Your account, history and activity log are " +
-                "encrypted with keys held by Android's secure hardware. History is kept for the last 30 days. " +
+                "encrypted with keys held by the Android Keystore, which keeps them in secure hardware on phones that " +
+                "have it (most modern phones). History is kept for the last 30 days. " +
                 "Android's automatic cloud backup is turned off.",
         )
         InfoCard(

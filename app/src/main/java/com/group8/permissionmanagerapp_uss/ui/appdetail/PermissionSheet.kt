@@ -99,7 +99,7 @@ fun PermissionSheet(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "${app.label} · This device",
+                        if (isDemo) "${app.label} · Demo sample app" else "${app.label} · This device",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -269,10 +269,19 @@ fun ChangeResultDialog(
         is ChangeResult.Updated -> AlertDialog(
             onDismissRequest = onDone,
             icon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = risk.low) },
-            title = { Text("Permission updated") },
+            title = { Text(if (result.unverified) "Can't confirm this change" else "Permission updated") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("$where is now set to \"${result.choice.label}\".")
+                    if (result.unverified) {
+                        Text("Android Settings was opened for $where.")
+                        Text(
+                            "Android shows \"Ask every time\" and \"Don't allow\" the same way to other apps, so we " +
+                                "can't confirm this change. Check Android Settings if you're unsure.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        Text("$where is now set to \"${result.choice.label}\".")
+                    }
                     if (result.appliedInDemo) {
                         Text(
                             "Demo mode: applied to the sample app only. Nothing on your phone changed.",

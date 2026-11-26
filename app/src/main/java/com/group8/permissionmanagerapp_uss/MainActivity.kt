@@ -7,7 +7,12 @@ import android.os.SystemClock
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.Modifier
+import com.group8.permissionmanagerapp_uss.ui.common.secureWholeApp
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -39,21 +44,27 @@ class MainActivity : FragmentActivity() {
         window.decorView.filterTouchesWhenObscured = true
         // Android 12+: hide other apps' overlay windows entirely while we're on screen.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setHideOverlayWindows(true)
+        // No screenshots, screen recording or Recents preview of any screen (release builds).
+        secureWholeApp(this)
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
             PermissionManagerAppUSSTheme {
-                val vm: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
-                authViewModel = vm
-                val gate by vm.gate.collectAsStateWithLifecycle()
-                when (val g = gate) {
-                    // Only users who passed password + phone unlock reach the app.
-                    is AuthGate.SignedIn -> PermissionManagerRoot(
-                        userName = g.name,
-                        userEmail = g.email,
-                        onSignOut = vm::signOut,
-                        openNotificationsRequest = openNotificationsRequest.intValue,
-                    )
-                    else -> AuthFlow(g, vm)
+                // Surface sets the default text colour from the theme. Without it, screens drawn on a
+                // plain background (sign-in, sign-up) fell back to black text, unreadable in dark mode.
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    val vm: AuthViewModel = viewModel(factory = AuthViewModel.Factory)
+                    authViewModel = vm
+                    val gate by vm.gate.collectAsStateWithLifecycle()
+                    when (val g = gate) {
+                        // Only users who passed password + phone unlock reach the app.
+                        is AuthGate.SignedIn -> PermissionManagerRoot(
+                            userName = g.name,
+                            userEmail = g.email,
+                            onSignOut = vm::signOut,
+                            openNotificationsRequest = openNotificationsRequest.intValue,
+                        )
+                        else -> AuthFlow(g, vm)
+                    }
                 }
             }
         }

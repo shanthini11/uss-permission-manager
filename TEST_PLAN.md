@@ -63,7 +63,7 @@ You test the **APK** (the same file classmates will get). You don't need to buil
 | 2.1 | Log out, enter wrong passwords | After 3 wrong: "2 tries left before a short lock"; after 5: "locked for 30 seconds" | ☐ |
 | 2.2 | Kill the app and reopen during the lock | Still locked (count survives restarts) | ☐ |
 | 2.3 | Another wrong password after the lock ends | Lock doubles (about 1 minute) | ☐ |
-| 2.4 | Try to screenshot the sign-in, recovery-key or password screens (release APK) | Screenshot is blocked or black (deliberate) | ☐ |
+| 2.4 | Try to screenshot any screen, e.g. Home, an app's permissions, sign-in (release APK) | Screenshot is blocked or black (deliberate) | ☐ |
 | 2.5 | Open Recents (□) while on the sign-in screen | App preview is hidden/blank | ☐ |
 | 2.6 | Forgot password? → email + **wrong** recovery key | "Email or recovery key is incorrect." | ☐ |
 | 2.7 | Forgot password? → correct key (any case/spacing) + new password → unlock | Signed in; the old password no longer works, the new one does | ☐ |

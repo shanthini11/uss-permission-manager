@@ -80,7 +80,7 @@ class DevicePermissionRepository(
             packageName = info.packageName,
             label = appInfo.loadLabel(pm).toString(),
             isSystemApp = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
-            permissions = PermissionResolver.resolve(grants),
+            permissions = PermissionResolver.resolve(grants, Build.VERSION.SDK_INT),
             lastUpdatedAt = info.lastUpdateTime,
         )
     }

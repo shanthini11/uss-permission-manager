@@ -2,7 +2,8 @@ package com.group8.permissionmanagerapp_uss.data.auth
 
 /** Input checks for the account forms (the repository re-checks before saving). */
 object InputValidation {
-    private val EMAIL = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
+    /** Standard email characters before the @ (incl. apostrophes); no empty labels ("..") in the domain. */
+    private val EMAIL = Regex("^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$")
     const val MAX_EMAIL = 254
     const val MAX_NAME = 50
     const val MAX_PASSWORD = 128
@@ -20,7 +21,23 @@ object InputValidation {
         "admin1234", "test1234", "user1234", "login123", "monkey123", "dragon123", "sunshine1", "princess1",
         "football1", "baseball1", "india123", "india@123", "delhi123", "test@123", "pass@123", "hello123",
         "12345678a", "123456789a", "a12345678", "1234abcd", "11111111a", "00000000a",
+        "password@123", "password1!", "qwertyuiop1", "iloveyou123", "welcome@123", "admin@123",
+        "india@1234", "changeme123", "trustno1", "football123", "superman123", "computer1",
     )
+
+    /** Fragments that make a password an early guess wherever they appear (sequences, keyboard rows, words). */
+    private val WEAK_FRAGMENTS = listOf(
+        "password", "passw0rd", "iloveyou", "qwerty", "asdfgh", "zxcvbn", "abcdef",
+        "123456", "234567", "345678", "456789", "567890", "987654", "111111", "000000",
+    )
+
+    /** Common list, weak fragments, or too few different characters (e.g. "22222222a"). */
+    fun isCommonOrSimple(password: String): Boolean {
+        val p = password.lowercase()
+        return p in COMMON_PASSWORDS ||
+            WEAK_FRAGMENTS.any { it in p } ||
+            p.toSet().size < 5
+    }
 
     fun emailError(email: String): String? = when {
         email.isBlank() -> "Enter your email address."
@@ -47,6 +64,13 @@ object InputValidation {
         val allMet: Boolean get() = length && letter && digit && notTooLong && notCommon && notEmailName
     }
 
+    /** Email names of 3+ characters count, with and without dots ("first.last" vs "firstlast"). */
+    private fun containsEmailName(password: String, emailName: String): Boolean {
+        val p = password.lowercase()
+        return listOf(emailName, emailName.replace(".", ""))
+            .any { it.length >= 3 && p.contains(it) }
+    }
+
     /** @param email if given, the part before "@" must not appear in the password. */
     fun passwordRules(password: String, email: String = ""): PasswordRules {
         val emailName = email.substringBefore('@').trim().lowercase()
@@ -55,8 +79,8 @@ object InputValidation {
             letter = password.any { it.isLetter() },
             digit = password.any { it.isDigit() },
             notTooLong = password.length <= MAX_PASSWORD,
-            notCommon = password.lowercase() !in COMMON_PASSWORDS,
-            notEmailName = emailName.length < 4 || !password.lowercase().contains(emailName),
+            notCommon = !isCommonOrSimple(password),
+            notEmailName = !containsEmailName(password, emailName),
         )
     }
 }

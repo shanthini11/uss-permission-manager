@@ -32,7 +32,7 @@ Requires **Android 7.0 or newer** and a **screen lock** (PIN, pattern or passwor
 Only install the APK from our official link. To make sure the file wasn't modified, compare its SHA-256 checksum:
 
 ```
-SHA-256: 0651988b648541baae726b64f30e509c41127c765284a6b4187f72c1779a721c
+SHA-256: 3f3238a513af956c74b2582f15bfb55702fa6d9185be6cf43c72ba19c50b6bdc
 ```
 The APK is signed by: `CN=Permission Tracker, OU=Group 8 USS, O=IIIT-Delhi, L=New Delhi, C=IN`
 (signing certificate SHA-256 `ebcbeb6294ea942ef1dcf2b8cac34a2c3e7e17ea14dfc4e6893c55bd8d7ab716`).
@@ -160,7 +160,7 @@ leaving the app. Nothing on your phone changes.
 
 ## 12. Security features you may notice
 
-- **Screenshots are blocked** on password, recovery-key and backup-password screens, and they're hidden in Recents. This is deliberate (protects against screen-recording malware and shoulder-surfing); screenshots elsewhere work normally.
+- **Screenshots and screen recording are blocked on every screen**, and the app is hidden in Recents. This is deliberate: your permission lists reveal which apps you use, so the whole app is protected against screen-recording malware and shoulder-surfing. (Testers: a screenshot comes out black; use a photo of the screen as proof instead.)
 - **Phone unlock prompt** when signing in, creating the account, recovering or resetting.
 - **Auto-lock** after 5 minutes away from the app.
 - **Password checks** before Revoke all, backups and deleting data (every time), and before changing a permission (not repeated within 2 minutes).
@@ -186,6 +186,10 @@ See `SECURITY.md` in the repository for the full security design.
 
 **"App not installed".** Uninstall any older copy of Permission Tracker first, then install again.
 
+**I chose "Allow once" but the app says it can't confirm the change.** Android shows "Ask every time" and "Don't allow" the same way to other apps. If the app wasn't allowed before, we can't tell whether you switched it to "Ask every time", so we say so instead of guessing. Check Android Settings if you're unsure.
+
+**What's the difference between High/Medium/Low and Critical/Sensitive?** High/Medium/Low rates a whole app by how much access it has. Critical/Sensitive/Low tags describe how private each type of data is (e.g. location is Critical).
+
 
 ## 14. Known limitations
 - Permission changes are completed in Android Settings (Android restriction).
@@ -195,7 +199,7 @@ See `SECURITY.md` in the repository for the full security design.
 - Not distributed through the Play Store, so Play Integrity checks aren't available; verify the checksum (§2.1).
 
 ## 15. Privacy summary
-Everything stays **on your phone, encrypted** with keys held by Android's secure hardware: your account
+Everything stays **on your phone, encrypted** with keys held by the Android Keystore (secure hardware on phones that have it): your account
 (name, email, and only a hash of your password), permission history and security log. The app has **no
 internet permission**: no servers, no cloud, no third-party services, no analytics, no ads, no data selling.
 Full details: **Settings → Privacy Information**.

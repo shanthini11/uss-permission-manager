@@ -151,4 +151,28 @@ class PermissionResolverTest {
         assertEquals("Duplicate permission across categories", all.size, all.toSet().size)
         all.forEach { assertTrue(PermissionCategory.forAndroidPermission(it) != null) }
     }
+
+    @Test
+    fun `on Android 9 and older any location grant counts as background`() {
+        val old = PermissionResolver.resolve(perms("ACCESS_FINE_LOCATION" to true), sdkInt = 28).single()
+        assertEquals(AccessLevel.ALWAYS, old.access)
+        assertTrue(old.isBackground)
+        val modern = PermissionResolver.resolve(perms("ACCESS_FINE_LOCATION" to true), sdkInt = 34).single()
+        assertEquals(AccessLevel.WHILE_IN_USE, modern.access)
+    }
+
+    @Test
+    fun `audio-only media access is not described as photos and files`() {
+        val audio = PermissionResolver.resolve(
+            perms("READ_MEDIA_AUDIO" to true, "READ_MEDIA_IMAGES" to false, "READ_MEDIA_VIDEO" to false)
+        ).single()
+        assertTrue(audio.detail!!.startsWith("Music and audio"))
+    }
+
+    @Test
+    fun `allow once from not allowed cannot be verified`() {
+        assertTrue(PermissionChoice.ALLOW_ONCE.isUnverifiableFrom(AccessLevel.NOT_ALLOWED))
+        assertTrue(!PermissionChoice.ALLOW_ONCE.isUnverifiableFrom(AccessLevel.WHILE_IN_USE))
+        assertTrue(!PermissionChoice.DENY.isUnverifiableFrom(AccessLevel.NOT_ALLOWED))
+    }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.group8.permissionmanagerapp_uss.MainActivity
+import com.group8.permissionmanagerapp_uss.data.model.AccessLevel
 import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
 import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
 import com.group8.permissionmanagerapp_uss.data.model.PermissionChoice
@@ -29,8 +30,13 @@ class ReturnWatcher(
 ) {
     private var job: Job? = null
 
-    /** Watch for one permission change. */
-    fun watch(packageName: String, category: PermissionCategory, choice: PermissionChoice) {
+    /** Watch for one permission change. [from] is the access before the change. */
+    fun watch(packageName: String, category: PermissionCategory, choice: PermissionChoice, from: AccessLevel? = null) {
+        // Not allowed -> Allow once can't be observed, so never announce it as done.
+        if (choice.isUnverifiableFrom(from)) {
+            stop()
+            return
+        }
         start(packageName) { app ->
             val access = app.accessFor(category)?.access ?: return@start null
             if (choice.matches(access)) "${app.label}: ${category.title} is now \"${choice.label}\"" else null

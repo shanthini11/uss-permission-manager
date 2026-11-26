@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -71,6 +72,7 @@ import com.group8.permissionmanagerapp_uss.ui.theme.LocalRiskColors
 fun HistoryScreen(
     onReviewPermission: (packageName: String, category: PermissionCategory) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenSettings: () -> Unit = {},
     viewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -92,7 +94,8 @@ fun HistoryScreen(
             // Explains how History differs from Notifications (lo-fi finding UP2).
             Text(
                 "A full record of permission changes on this device for the last 30 days. " +
-                    "Dismissing an alert in Notifications doesn't remove it from here.",
+                    "Dismissing an alert in Notifications doesn't remove it from here. " +
+                    "Checked just now, every time you open the app, and hourly in the background.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -100,11 +103,13 @@ fun HistoryScreen(
         if (!state.historyEnabled) {
             item {
                 SectionCard {
-                    Text(
-                        "Permission History is turned off, so new changes aren't being recorded. Turn it on in Settings.",
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Column(Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 4.dp)) {
+                        Text(
+                            "Permission History is turned off, so new changes aren't being recorded.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = onOpenSettings) { Text("Turn on in Settings") }
+                    }
                 }
             }
         }

@@ -63,6 +63,25 @@ class InputValidationTest {
     }
 
     @Test
+    fun `apostrophes are accepted and empty domain labels are rejected`() {
+        assertNull(InputValidation.emailError("qa'tester@example.com"))
+        assertNotNull(InputValidation.emailError("qa@example..com"))
+    }
+
+    @Test
+    fun `simple and repetitive passwords count as common`() {
+        assertFalse(InputValidation.passwordRules("22222222222a").notCommon)
+        assertFalse(InputValidation.passwordRules("myname123456").notCommon)
+        assertTrue(InputValidation.passwordRules("blue-river-42").notCommon)
+    }
+
+    @Test
+    fun `short and dotted email names are also checked`() {
+        assertFalse(InputValidation.passwordRules("Secureabc7890", "abc@example.com").notEmailName)
+        assertFalse(InputValidation.passwordRules("firstlast-2026", "first.last@gmail.com").notEmailName)
+    }
+
+    @Test
     fun `email is masked on screen`() {
         assertEquals("ma•••••@gmail.com", maskEmail("manojna@gmail.com"))
         assertEquals("a•••@x.com", maskEmail("a@x.com"))
