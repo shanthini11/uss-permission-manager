@@ -118,7 +118,12 @@ app verifies the result.
   other apps' overlays while ours is visible.
 - `FLAG_SECURE` on **every screen** (blocks screenshots, screen recording and the Recents preview):
   the permission lists reveal which apps a person uses, so the whole app is treated as sensitive.
+  On Android 13+ Recents shows the app icon instead of a thumbnail (`setRecentsScreenshotEnabled(false)`);
+  on Android 14+ a screenshot attempt shows a message explaining the block (`ScreenCaptureCallback`).
   Debug builds skip it so the emulator view works.
+- **Repackaging check:** the release app compares its own signing certificate (SHA-256) with the official
+  one and refuses to run if it was re-signed by someone else. An attacker who edits the code could remove
+  the check, so the published APK checksum remains the main defence.
 - Notifications use private visibility; PendingIntents are immutable and explicit.
 - Release builds are shrunk and obfuscated with R8; verbose logging is stripped.
 
@@ -171,6 +176,7 @@ server, there is nothing remote to flood; the remaining targets are on the phone
 | 11 | DoS | Malformed intent extras | Ignored, no crash | ✅ Secure |
 | 12 | Screen capture | Screenshot any screen, or look at the Recents preview | Blocked on every screen in release builds | ✅ Fixed after peer testing (was password screens only) |
 | 14 | Backup cracking | Offline guessing of a leaked backup file | 600,000 PBKDF2 iterations + 10-character rules | ✅ Fixed after peer testing (was 120,000 / 8 characters) |
+| 16 | Repackaging | Re-sign the APK with a different key and install it | The copy shows "This copy isn't the official Permission Tracker" and won't run | ✅ Mitigated after peer testing (a code-editing attacker can remove the check) |
 | 15 | Weak passwords | `22222222a`, `abc` in `Secureabc789!`, `first.last` names | Rejected (simple-password and email-name checks) | ✅ Fixed after peer testing (unit tested) |
 | 13 | Secrets in repo | Search repo and history | Release keystore and passwords are git-ignored | ✅ Secure |
 
@@ -192,7 +198,7 @@ server, there is nothing remote to flood; the remaining targets are on the phone
 | 7 | **Race conditions** | Account and history writes serialised with mutexes | ✅ |
 | 7 | **Misconfiguration / file permissions** | Backups disabled; only launcher exported; all files in private storage and encrypted | ✅ |
 | 6 | **Re-identification / metadata exposure** | Nothing leaves the phone: no servers, analytics or email provider see anything | ✅ |
-| 6 | **Repackaged malicious apps (Zombinder)** | The user guide publishes the APK's SHA-256 checksum and signing certificate | ⚠️ Can't be fully prevented outside the Play Store |
+| 6 | **Repackaged malicious apps (Zombinder)** | Published SHA-256 checksum and signing certificate; the app checks its own signature at launch and refuses to run if re-signed | ⚠️ Can't be fully prevented outside the Play Store |
 | 5 | **DoS** | See §3.9 | ✅ single-source / ❌ DDoS out of scope (and no server to attack) |
 | 5 | **Sniffing, TCP hijacking** | No network traffic at all | ✅ N/A |
 | 5 | **Social engineering / phishing** | Recovery key screen says never to share it; plain-language explanations; no codes sent that could be phished | ⚠️ Education reduces but can't eliminate it |

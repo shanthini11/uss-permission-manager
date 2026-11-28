@@ -168,6 +168,7 @@ class Notifier(private val context: Context) {
         fun describe(event: PermissionEvent): String {
             val category = event.category?.title ?: return event.appLabel
             val to = event.to ?: return "${event.appLabel}: $category changed"
+            event.toDetail?.let { if (event.fromDetail != null) return "${event.appLabel}: $category is now \"${it.lowercase()}\"" }
             return when {
                 to.isGranted && event.from?.isGranted != true -> "${event.appLabel} can now use $category (${to.label.lowercase()})"
                 !to.isGranted -> "${event.appLabel} can no longer use $category"

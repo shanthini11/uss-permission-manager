@@ -288,6 +288,9 @@ fun EventRow(event: PermissionEvent, onClick: () -> Unit, modifier: Modifier = M
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(event.appLabel, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(event.category?.title.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                event.toDetail?.let {
+                    Text("Now: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 event.to?.let { AccessChip(it) }
@@ -329,7 +332,11 @@ fun EventDetailSheet(event: PermissionEvent, onDismiss: () -> Unit, onReview: ()
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     DetailRow("Event time", TimeFormat.dateTime(context, event.timestamp))
-                    DetailRow("Change", "${event.from?.label ?: "Not requested before"}  →  ${event.to?.label.orEmpty()}")
+                    DetailRow(
+                        "Change",
+                        if (event.fromDetail != null && event.toDetail != null) "${event.fromDetail}  →  ${event.toDetail}"
+                        else "${event.from?.label ?: "Not requested before"}  →  ${event.to?.label.orEmpty()}",
+                    )
                     DetailRow("How", event.source.label)
                     DetailRow("Device", "This device")
                     HorizontalDivider()

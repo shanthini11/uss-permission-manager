@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.group8.permissionmanagerapp_uss.data.model.AppPermission
 import com.group8.permissionmanagerapp_uss.data.model.InstalledApp
+import com.group8.permissionmanagerapp_uss.data.model.PermissionCategory
 import com.group8.permissionmanagerapp_uss.data.model.PermissionChoice
 import com.group8.permissionmanagerapp_uss.ui.components.AccessChip
 import com.group8.permissionmanagerapp_uss.ui.components.CategoryIconBox
@@ -134,6 +135,15 @@ fun PermissionSheet(
                 }
             }
 
+            if (category == PermissionCategory.LOCATION) {
+                // Android has two separate location settings; say so instead of implying one list (peer-testing finding).
+                Text(
+                    "Android sets location in two parts: when the app can use it (once, while using, all the time) " +
+                        "and how exact it is (precise or approximate). These options cover the common combinations.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 options.forEach { option ->
                     OptionRow(

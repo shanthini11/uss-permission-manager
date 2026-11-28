@@ -55,6 +55,8 @@ data class OverviewUiState(
     val sensitiveAllowed: Int = 0,
     /** Share of critical/sensitive requests that are blocked or limited, 0..100. */
     val protectionPercent: Int = 0,
+    /** False when no app requested anything sensitive: the score then means nothing, so it isn't shown. */
+    val hasSensitiveRequests: Boolean = true,
     val backgroundAccess: List<AppAccess> = emptyList(),
     /** Apps worth reviewing first: high-risk apps the user installed (falls back to medium). */
     val attentionApps: List<InstalledApp> = emptyList(),
@@ -101,8 +103,12 @@ class OverviewViewModel(private val repository: AppsRepository) : ViewModel() {
                 )
 
             val sensitiveRequests = allAccess.filter { it.permission.category.sensitivity != Sensitivity.LOW }
+            // "Protected" = blocked or limited. Location/sensors granted only while in use count as limited too,
+            // so choosing the Recommended option raises the score instead of lowering it (peer-testing finding).
             val protectedCount = sensitiveRequests.count {
-                !it.permission.access.isGranted || it.permission.access == AccessLevel.LIMITED
+                val p = it.permission
+                !p.access.isGranted || p.access == AccessLevel.LIMITED ||
+                    (p.access == AccessLevel.WHILE_IN_USE && p.category.backgroundPermission != null)
             }
             val granted = allAccess.filter { it.permission.access.isGranted }
 
@@ -119,8 +125,9 @@ class OverviewViewModel(private val repository: AppsRepository) : ViewModel() {
                 totalAllowed = granted.size,
                 criticalAllowed = granted.count { it.permission.category.sensitivity == Sensitivity.CRITICAL },
                 sensitiveAllowed = granted.count { it.permission.category.sensitivity == Sensitivity.SENSITIVE },
-                protectionPercent = if (sensitiveRequests.isEmpty()) 100
+                protectionPercent = if (sensitiveRequests.isEmpty()) 0
                 else protectedCount * 100 / sensitiveRequests.size,
+                hasSensitiveRequests = sensitiveRequests.isNotEmpty(),
                 backgroundAccess = allAccess
                     .filter { it.permission.isBackground }
                     .sortedWith(compareBy<AppAccess> { it.app.isSystemApp }.thenBy { it.permission.category.sensitivity.ordinal }),

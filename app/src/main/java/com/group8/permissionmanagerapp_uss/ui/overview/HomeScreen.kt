@@ -120,7 +120,9 @@ private fun ProtectionCard(state: OverviewUiState) {
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(104.dp)
-                    .semantics { contentDescription = "$percent percent protected" },
+                    .semantics {
+                        contentDescription = if (state.hasSensitiveRequests) "$percent percent protected" else "Nothing to score yet"
+                    },
             ) {
                 CircularProgressIndicator(
                     progress = { percent / 100f },
@@ -129,7 +131,11 @@ private fun ProtectionCard(state: OverviewUiState) {
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$percent%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (state.hasSensitiveRequests) "$percent%" else "–",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Text("PROTECTED", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -137,7 +143,12 @@ private fun ProtectionCard(state: OverviewUiState) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Your privacy overview", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    "$percent% of sensitive permission requests are blocked or limited.",
+                    if (state.hasSensitiveRequests) {
+                        "$percent% of sensitive permission requests are blocked or limited " +
+                            "(not allowed, approximate/selected only, or location only while in use)."
+                    } else {
+                        "Nothing to score yet: none of your apps has asked for sensitive permissions."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

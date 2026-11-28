@@ -18,6 +18,13 @@ object PermissionResolver {
     /** Android 10 (API 29) introduced separate background location; before it, any grant included background. */
     const val SDK_SEPARATE_BACKGROUND_LOCATION = 29
 
+    /** Android 11 (API 30) added one-time grants ("Ask every time") for location, camera and microphone. */
+    const val SDK_ONE_TIME_PERMISSIONS = 30
+    private val oneTimeCategories = setOf(PermissionCategory.LOCATION, PermissionCategory.CAMERA, PermissionCategory.MICROPHONE)
+
+    /** Android reports "Ask every time" and "Don't allow" identically to other apps, so say both. */
+    const val ASK_OR_DENIED = "Not allowed, or set to ask every time (Android doesn't tell other apps which)"
+
     /** Categories where a foreground grant means "only while using the app". */
     private val foregroundOnlyCategories = setOf(
         PermissionCategory.LOCATION,
@@ -66,7 +73,10 @@ object PermissionResolver {
         val foregroundGranted = grants.any { (perm, granted) -> granted && perm != bg }
         val backgroundGranted = bg != null && grants[bg] == true
 
-        if (!foregroundGranted && !backgroundGranted) return AccessLevel.NOT_ALLOWED to null
+        if (!foregroundGranted && !backgroundGranted) {
+            val detail = if (category in oneTimeCategories && sdkInt >= SDK_ONE_TIME_PERMISSIONS) ASK_OR_DENIED else null
+            return AccessLevel.NOT_ALLOWED to detail
+        }
 
         return when (category) {
             PermissionCategory.LOCATION -> {

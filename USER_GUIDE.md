@@ -32,7 +32,7 @@ Requires **Android 7.0 or newer** and a **screen lock** (PIN, pattern or passwor
 Only install the APK from our official link. To make sure the file wasn't modified, compare its SHA-256 checksum:
 
 ```
-SHA-256: 3f3238a513af956c74b2582f15bfb55702fa6d9185be6cf43c72ba19c50b6bdc
+SHA-256: ce7d795d14695a1f21d210d13895d08e7362871a2205bba0bc4986f13f7947fe
 ```
 The APK is signed by: `CN=Permission Tracker, OU=Group 8 USS, O=IIIT-Delhi, L=New Delhi, C=IN`
 (signing certificate SHA-256 `ebcbeb6294ea942ef1dcf2b8cac34a2c3e7e17ea14dfc4e6893c55bd8d7ab716`).

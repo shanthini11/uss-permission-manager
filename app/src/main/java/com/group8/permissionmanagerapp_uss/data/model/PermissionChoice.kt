@@ -30,9 +30,10 @@ enum class PermissionChoice(
         systemOption = "Allow only while using the app",
     ),
     APPROXIMATE(
-        label = "Approximate location only",
+        label = "While using the app, approximate only",
         tag = "More private",
-        description = "The app sees roughly which area you are in, not your exact spot.",
+        description = "Same timing as \"while using\", but with Android's \"Use precise location\" turned off: " +
+            "the app sees roughly which area you are in, not your exact spot.",
         target = AccessLevel.LIMITED,
         systemOption = "Allow only while using the app, then turn OFF \"Use precise location\"",
     ),

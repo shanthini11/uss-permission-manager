@@ -15,6 +15,9 @@ object ChangeDetector {
         apps = apps.associate { app -> app.packageName to app.permissions.associate { it.category to it.access } },
         labels = apps.associate { it.packageName to it.label },
         takenAt = now,
+        details = apps.associate { app ->
+            app.packageName to app.permissions.mapNotNull { p -> p.detail?.let { p.category to it } }.toMap()
+        },
     )
 
     /**
@@ -36,7 +39,21 @@ object ChangeDetector {
                 val new = permission.access
                 // Newly installed app: only report what it was actually allowed.
                 if (before == null && !new.isGranted) continue
-                if (old == new) continue
+                if (old == new) {
+                    // Same level but a different scope, e.g. background location going from approximate
+                    // to precise. Only when both details are known (older snapshots have none).
+                    val oldDetail = previous.details[app.packageName]?.get(permission.category)
+                    val newDetail = permission.detail
+                    if (new.isGranted && oldDetail != null && newDetail != null && oldDetail != newDetail) {
+                        events += PermissionEvent(
+                            id = newId(), timestamp = now, packageName = app.packageName, appLabel = app.label,
+                            category = permission.category, from = old, to = new,
+                            source = EventSource.DETECTED, isDemo = false,
+                            fromDetail = oldDetail, toDetail = newDetail,
+                        )
+                    }
+                    continue
+                }
                 events += PermissionEvent(
                     id = newId(),
                     timestamp = now,

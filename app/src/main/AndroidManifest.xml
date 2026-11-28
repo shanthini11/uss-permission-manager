@@ -16,6 +16,9 @@
     <!-- Android 12+: lets us hide other apps' overlays while our window is showing (anti-tapjacking). -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
+    <!-- Android 14+: lets us tell the user why a screenshot attempt was blocked (normal permission). -->
+    <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
+
     <!--
         Fully offline: strip any network permission a library might merge in, so the app physically
         cannot send data anywhere. Check with: aapt dump permissions app-release.apk

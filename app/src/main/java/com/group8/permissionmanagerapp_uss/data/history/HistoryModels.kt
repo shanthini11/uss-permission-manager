@@ -35,6 +35,9 @@ data class PermissionEvent(
     val isDemo: Boolean,
     /** Dismissed from Notifications. History keeps it regardless. */
     val dismissed: Boolean = false,
+    /** Finer detail when the level stayed the same but its scope changed (e.g. approximate -> precise). */
+    val fromDetail: String? = null,
+    val toDetail: String? = null,
 ) {
     val isReminder: Boolean get() = source == EventSource.REVIEW_REMINDER
     val isGrant: Boolean get() = to?.isGranted == true
@@ -47,6 +50,8 @@ data class PermissionSnapshot(
     val apps: Map<String, Map<PermissionCategory, AccessLevel>> = emptyMap(),
     val labels: Map<String, String> = emptyMap(),
     val takenAt: Long = 0,
+    /** packageName -> (category -> detail, e.g. "Precise location"); empty in snapshots from older versions. */
+    val details: Map<String, Map<PermissionCategory, String>> = emptyMap(),
 )
 
 @Serializable

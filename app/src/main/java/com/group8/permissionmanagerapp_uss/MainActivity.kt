@@ -4,6 +4,9 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.widget.Toast
+import com.group8.permissionmanagerapp_uss.data.security.AppIntegrity
+import com.group8.permissionmanagerapp_uss.ui.common.UnofficialCopyScreen
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -36,6 +39,14 @@ class MainActivity : FragmentActivity() {
     /** When the app last went to the background (elapsed realtime, unaffected by clock changes). */
     private var backgroundedAt = 0L
 
+    /** Android 14+: told when the user tries to take a screenshot, so we can explain why it was blocked. */
+    private val screenCaptureCallback: Any? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            android.app.Activity.ScreenCaptureCallback {
+                Toast.makeText(this, "Screenshots are blocked in ${AppInfo.NAME} to protect your privacy", Toast.LENGTH_SHORT).show()
+            }
+        } else null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -46,9 +57,18 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setHideOverlayWindows(true)
         // No screenshots, screen recording or Recents preview of any screen (release builds).
         secureWholeApp(this)
+        // Android 13+: Recents shows the app's icon/background instead of a black or captured thumbnail.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !BuildConfig.DEBUG) setRecentsScreenshotEnabled(false)
         if (savedInstanceState == null) handleIntent(intent)
+        // Repackaging check: a copy re-signed by someone else refuses to run (release builds only;
+        // debug builds use Android Studio's debug key).
+        val official = BuildConfig.DEBUG || AppIntegrity.isOfficialBuild(this)
         setContent {
             PermissionManagerAppUSSTheme {
+                if (!official) {
+                    UnofficialCopyScreen()
+                    return@PermissionManagerAppUSSTheme
+                }
                 // Surface sets the default text colour from the theme. Without it, screens drawn on a
                 // plain background (sign-in, sign-up) fell back to black text, unreadable in dark mode.
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -78,10 +98,16 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         backgroundedAt = SystemClock.elapsedRealtime()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            (screenCaptureCallback as? android.app.Activity.ScreenCaptureCallback)?.let { unregisterScreenCaptureCallback(it) }
+        }
     }
 
     override fun onStart() {
         super.onStart()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            (screenCaptureCallback as? android.app.Activity.ScreenCaptureCallback)?.let { registerScreenCaptureCallback(mainExecutor, it) }
+        }
         // Auto-lock: after 5 minutes in the background, ask for the phone unlock again.
         if (backgroundedAt != 0L &&
             SystemClock.elapsedRealtime() - backgroundedAt > AuthRepository.AUTO_LOCK_MS
